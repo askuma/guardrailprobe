@@ -51,3 +51,8 @@ reports/*.md
 
 # Logs
 *.log
+
+# Host-installed ML packages (LlamaFirewall, LLM Guard) — volume-mounted into Docker
+# Install with: pip install llamafirewall llm-guard --target ./site-packages
+# Pattern without trailing slash matches both a real directory and a symlink.
+site-packages
