@@ -1,0 +1,76 @@
+# Copy .env.example to .env and fill in credentials before running.
+# Required: at least one backend credential so probes are not all SKIPPED.
+#
+# Start dashboard:   docker compose up
+# One-shot benchmark: docker compose run --rm guardrailprobe \
+#                       guardrailprobe run --year 2026 --month 6 --output-dir /app/reports
+
+services:
+  guardrailprobe:
+    build:
+      context: .
+      args:
+        SKIP_SPACY: ${SKIP_SPACY:-0}   # set to 1 to skip spaCy model download
+    image: guardrailprobe:0.1.0
+    container_name: guardrailprobe
+    ports:
+      - "8080:8080"            # Flask dashboard  →  http://localhost:8080
+    env_file:
+      - .env                   # Copy .env.example → .env and fill in values
+    environment:
+      # ── Lakera Guard ──────────────────────────────────────────────────────
+      - LAKERA_GUARD_API_KEY=${LAKERA_GUARD_API_KEY:-}
+
+      # ── OpenAI Moderation ─────────────────────────────────────────────────
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+
+      # ── Azure Content Safety ──────────────────────────────────────────────
+      - AZURE_CONTENT_SAFETY_KEY=${AZURE_CONTENT_SAFETY_KEY:-}
+      - AZURE_CONTENT_SAFETY_ENDPOINT=${AZURE_CONTENT_SAFETY_ENDPOINT:-}
+
+      # ── Azure Prompt Shields ──────────────────────────────────────────────
+      - AZURE_PROMPT_SHIELDS_KEY=${AZURE_PROMPT_SHIELDS_KEY:-}
+      - AZURE_PROMPT_SHIELDS_ENDPOINT=${AZURE_PROMPT_SHIELDS_ENDPOINT:-}
+
+      # ── AWS Bedrock Guardrails ─────────────────────────────────────────────
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+      - AWS_GUARDRAIL_ID=${AWS_GUARDRAIL_ID:-}
+      - AWS_GUARDRAIL_VERSION=${AWS_GUARDRAIL_VERSION:-DRAFT}
+
+      # ── NeMo (requires an LLM key to evaluate guardrail rails) ────────────
+      - NEMO_OPENAI_API_KEY=${NEMO_OPENAI_API_KEY:-}
+      - NEMO_OPENAI_MODEL=${NEMO_OPENAI_MODEL:-gpt-4o-mini}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - OPENROUTER_MODEL=${OPENROUTER_MODEL:-meta-llama/llama-3.1-8b-instruct:free}
+
+      # ── GuardrailsAI hub token (optional — regex fallback always active) ───
+      - GUARDRAILS_TOKEN=${GUARDRAILS_TOKEN:-}
+
+      # ── Custom HTTP endpoint (GA Guard or any HTTPS guardrail API) ─────────
+      - GA_GUARD_API_URL=${GA_GUARD_API_URL:-}
+
+      # ── PDF report signing ─────────────────────────────────────────────────
+      - GUARDRAIL_SIGNING_KEY_P12=/app/certs/guardrail_signing.p12
+
+    volumes:
+      - guardrailprobe_reports:/app/reports          # benchmark output (PDF, JSON, MD)
+      - ./docs:/app/docs                             # committed benchmark artifacts
+      - ./certs:/app/certs:ro                        # signing key (never commit the .p12)
+      - ./site-packages:/app/site-packages:ro        # llamafirewall / llm-guard (host-installed)
+
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  guardrailprobe_reports:
+    driver: local

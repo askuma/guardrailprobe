@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Hatch
+.hatch/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Signing keys (never commit private keys)
+*.p12
+*.pfx
+guardrail_signing.p12
+
+# Environment variables (credentials)
+.env
+.env.*
+!.env.example
+
+# Local-only scratch reports (not the committed benchmark artifacts in docs/)
+reports/*.pdf
+reports/*.json
+reports/*.md
+
+# macOS
+.DS_Store
+
+# Logs
+*.log

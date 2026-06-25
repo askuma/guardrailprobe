@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GuardrailProbe — OWASP LLM Top 10 Benchmark</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      /* Dark glass palette */
+      --bg:        #060d1f;
+      --text:      #eef2ff;
+      --sub:       rgba(238,242,255,0.6);
+      --muted:     rgba(238,242,255,0.35);
+      --blue:      #60a5fa;
+      --blue-lt:   #93c5fd;
+      --green:     #34d399;
+      --amber:     #fbbf24;
+      --red:       #f87171;
+      --purple:    #a78bfa;
+      --surface:   rgba(255,255,255,0.04);
+      --glass:     rgba(255,255,255,0.06);
+      --glass-hov: rgba(255,255,255,0.1);
+      --glass-bdr: rgba(255,255,255,0.11);
+      --blur:      18px;
+      --font-sans: 'Fira Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      --font-mono: 'Fira Code', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+    }
+
+    html { font-size: 16px; }
+    body {
+      background-color: var(--bg);
+      background-image:
+        radial-gradient(ellipse 900px 700px at 10% 20%, rgba(59,130,246,0.2) 0%, transparent 65%),
+        radial-gradient(ellipse 700px 600px at 88% 80%, rgba(124,58,237,0.18) 0%, transparent 65%),
+        radial-gradient(ellipse 550px 450px at 60% 5%,  rgba(16,185,129,0.1) 0%, transparent 60%),
+        radial-gradient(ellipse 400px 350px at 30% 90%, rgba(245,158,11,0.07) 0%, transparent 60%);
+      background-attachment: fixed;
+      color: var(--text);
+      font-family: var(--font-sans);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    a { color: var(--blue); text-decoration: none; transition: color 0.15s ease; }
+    a:hover { color: var(--blue-lt); text-decoration: underline; }
+
+    :focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; border-radius: 3px; }
+    :focus:not(:focus-visible) { outline: none; }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition: none !important; animation: none !important; }
+    }
+
+    /* ── Layout ── */
+    .container { max-width: 1300px; margin: 0 auto; padding: 0 24px; }
+    @media (min-width: 640px) { .container { padding: 0 32px; } }
+    @media (min-width: 1024px) { .container { padding: 0 48px; } }
+
+    /* ── Sticky glass topbar ── */
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: rgba(6,13,31,0.72);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      padding: 14px 0;
+      box-shadow: 0 4px 40px rgba(0,0,0,0.4);
+    }
+    .topbar-inner {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .topbar-brand { display: flex; align-items: center; gap: 14px; }
+    .topbar-logo {
+      width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0;
+      background: linear-gradient(135deg, #60a5fa, #3b82f6);
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 0 24px rgba(96,165,250,0.55), inset 0 1px 0 rgba(255,255,255,0.25);
+    }
+    .topbar h1 {
+      font-family: var(--font-mono);
+      font-size: 18px;
+      font-weight: 700;
+      color: #eef2ff;
+      margin: 0;
+      letter-spacing: -0.01em;
+    }
+    .topbar .subtitle {
+      font-size: 11px;
+      color: rgba(238,242,255,0.38);
+      margin-top: 2px;
+      letter-spacing: 0.03em;
+    }
+    .topbar-links { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
+    .topbar-links a {
+      font-size: 12px;
+      color: rgba(238,242,255,0.42);
+      padding: 4px 2px;
+      cursor: pointer;
+      transition: color 0.15s ease;
+      font-weight: 500;
+    }
+    .topbar-links a:hover { color: var(--blue); text-decoration: none; }
+
+    /* ── Content area ── */
+    .content { padding: 32px 0 80px; }
+
+    /* ── Stat cards — glass with glow ── */
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+    .stat-card {
+      background: var(--glass);
+      backdrop-filter: blur(var(--blur));
+      -webkit-backdrop-filter: blur(var(--blur));
+      border: 1px solid var(--glass-bdr);
+      border-radius: 16px;
+      padding: 20px 22px;
+      position: relative;
+      overflow: hidden;
+      transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+      box-shadow: 0 4px 32px rgba(0,0,0,0.2), 0 0 40px var(--glow, rgba(96,165,250,0.12));
+    }
+    .stat-card:hover {
+      transform: translateY(-3px);
+      background: var(--glass-hov);
+      box-shadow: 0 8px 48px rgba(0,0,0,0.35), 0 0 60px var(--glow, rgba(96,165,250,0.2));
+    }
+    /* Top accent line */
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: var(--accent, var(--blue));
+      border-radius: 16px 16px 0 0;
+    }
+    /* Soft glow orb */
+    .stat-card::after {
+      content: '';
+      position: absolute;
+      right: -10px; top: -10px;
+      width: 80px; height: 80px;
+      background: radial-gradient(circle, var(--accent, var(--blue)) 0%, transparent 70%);
+      opacity: 0.18;
+    }
+    .stat-card .stat-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: rgba(238,242,255,0.42);
+      margin-bottom: 10px;
+      position: relative;
+      z-index: 1;
+    }
+    .stat-card .stat-value {
+      font-family: var(--font-mono);
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 5px;
+      line-height: 1;
+      position: relative;
+      z-index: 1;
+      filter: drop-shadow(0 0 8px currentColor);
+    }
+    .stat-card .stat-sub { font-size: 11px; color: rgba(238,242,255,0.32); position: relative; z-index: 1; }
+
+    /* ── Generic glass card ── */
+    .card {
+      background: var(--glass);
+      backdrop-filter: blur(var(--blur));
+      -webkit-backdrop-filter: blur(var(--blur));
+      border: 1px solid var(--glass-bdr);
+      border-radius: 16px;
+      padding: 22px;
+      margin-bottom: 20px;
+    }
+
+    /* ── Section heading ── */
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .section-head h2 {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      color: rgba(238,242,255,0.45);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    /* ── Card title ── */
+    .card-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 16px; }
+
+    /* ── Badge ── */
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 5px;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      border: 1px solid;
+    }
+
+    /* ── Benchmark table ── */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    thead tr { border-bottom: 1px solid rgba(255,255,255,0.08); }
+    th {
+      text-align: left;
+      padding: 9px 12px;
+      color: rgba(238,242,255,0.38);
+      font-weight: 700;
+      font-size: 10px;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+    }
+    th.center, td.center { text-align: center; }
+    th.right,  td.right  { text-align: right; }
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      vertical-align: middle;
+      color: rgba(238,242,255,0.82);
+    }
+    tbody tr:not(.group-hdr):hover { background: rgba(255,255,255,0.05); }
+
+    /* ── Group header row ── */
+    .group-hdr td {
+      padding: 10px 12px 6px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.03);
+    }
+
+    /* ── Footnotes ── */
+    .footnotes {
+      margin-top: 14px;
+      padding: 12px 16px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 8px;
+      font-size: 11px;
+      color: rgba(238,242,255,0.38);
+      line-height: 1.75;
+    }
+    .footnotes strong { color: rgba(238,242,255,0.58); }
+    .footnotes ul { margin: 4px 0 0; padding-left: 16px; }
+
+    /* ── Download bar ── */
+    .dl-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+      padding: 14px 20px;
+      background: var(--glass);
+      backdrop-filter: blur(var(--blur));
+      -webkit-backdrop-filter: blur(var(--blur));
+      border: 1px solid var(--glass-bdr);
+      border-radius: 14px;
+    }
+    .dl-bar .dl-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: rgba(238,242,255,0.65);
+      letter-spacing: 0.02em;
+    }
+    .dl-btn {
+      font-family: var(--font-sans);
+      font-size: 12px;
+      color: var(--blue);
+      padding: 5px 14px;
+      border: 1px solid rgba(96,165,250,0.3);
+      border-radius: 7px;
+      font-weight: 500;
+      background: rgba(96,165,250,0.08);
+      cursor: pointer;
+      transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    .dl-btn:hover {
+      background: rgba(96,165,250,0.18);
+      border-color: rgba(96,165,250,0.55);
+      box-shadow: 0 0 16px rgba(96,165,250,0.25);
+      text-decoration: none;
+    }
+
+    /* ── Archive table ── */
+    .archive-winner { color: var(--green); font-weight: 500; }
+    .archive-dl { display: flex; gap: 8px; }
+
+    /* ── Code block ── */
+    pre {
+      background: rgba(0,0,0,0.45);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 10px;
+      padding: 16px 18px;
+      overflow-x: auto;
+      font-size: 12px;
+      color: rgba(238,242,255,0.68);
+      line-height: 1.7;
+      font-family: var(--font-mono);
+    }
+
+    /* ── Footer ── */
+    footer {
+      border-top: 1px solid rgba(255,255,255,0.07);
+      margin-top: 32px;
+      padding: 24px 0;
+      font-size: 12px;
+      color: rgba(238,242,255,0.28);
+    }
+    footer p + p { margin-top: 4px; }
+    footer a { color: rgba(238,242,255,0.36); }
+    footer a:hover { color: var(--blue); text-decoration: none; }
+
+    /* ── Loading / empty ── */
+    .placeholder {
+      color: rgba(238,242,255,0.28);
+      font-size: 13px;
+      padding: 40px;
+      text-align: center;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 640px) {
+      .topbar h1 { font-size: 16px; }
+      .stat-grid { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Top header bar ── -->
+<div class="topbar">
+  <div class="container topbar-inner">
+    <div class="topbar-brand">
+      <div class="topbar-logo" aria-hidden="true">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
+      </div>
+      <div>
+        <h1>GuardrailProbe</h1>
+        <p class="subtitle">Independent OWASP LLM Top 10 benchmark &middot; 11 backends &middot; Updated monthly</p>
+      </div>
+    </div>
+    <div class="topbar-links">
+      <a href="https://github.com/askuma/guardrailprobe" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://pypi.org/project/guardrailprobe/" target="_blank" rel="noopener">PyPI</a>
+      <a href="../METHODOLOGY.md" target="_blank" rel="noopener">Methodology</a>
+      <a href="../CONTRIBUTING.md" target="_blank" rel="noopener">Contributing</a>
+    </div>
+  </div>
+</div>
+
+<!-- ── Page content ── -->
+<div class="container content">
+
+  <!-- ── KPI cards ── -->
+  <div class="stat-grid" id="kpi-row">
+    <div class="stat-card" style="--accent:#34d399;--glow:rgba(52,211,153,0.18)"><p class="stat-label">Best Overall</p><p class="stat-value" id="kpi-best" style="color:#34d399">—</p><p class="stat-sub" id="kpi-best-rate">—</p></div>
+    <div class="stat-card" style="--accent:#60a5fa;--glow:rgba(96,165,250,0.18)"><p class="stat-label">Backends Tested</p><p class="stat-value" id="kpi-backends" style="color:#60a5fa">—</p><p class="stat-sub">this run</p></div>
+    <div class="stat-card" style="--accent:#a78bfa;--glow:rgba(167,139,250,0.18)"><p class="stat-label">Probes Fired</p><p class="stat-value" id="kpi-probes" style="color:#a78bfa">—</p><p class="stat-sub">OWASP LLM Top 10</p></div>
+    <div class="stat-card" style="--accent:#fbbf24;--glow:rgba(251,191,36,0.18)"><p class="stat-label">Report Period</p><p class="stat-value" id="kpi-period" style="color:#fbbf24;font-size:20px;font-family:var(--font-mono)">—</p><p class="stat-sub" id="kpi-updated">—</p></div>
+  </div>
+
+  <!-- ── Downloads ── -->
+  <div class="dl-bar" id="dl-bar" style="display:none">
+    <span class="dl-label">Latest report</span>
+    <span id="dl-buttons"></span>
+  </div>
+
+  <!-- ── Latest benchmark section ── -->
+  <div class="section-head">
+    <h2 id="latest-heading">Latest Benchmark</h2>
+  </div>
+
+  <div class="card" id="benchmark-card">
+    <p class="placeholder">Loading…</p>
+  </div>
+
+  <!-- ── Archive section ── -->
+  <div class="section-head" style="margin-top:12px">
+    <h2>Benchmark Archive</h2>
+  </div>
+
+  <div class="card" id="archive-card">
+    <p class="placeholder">Loading…</p>
+  </div>
+
+  <!-- ── Reproduce section ── -->
+  <div class="section-head" style="margin-top:12px">
+    <h2>How to Reproduce</h2>
+  </div>
+
+  <div class="card">
+<pre id="reproduce-block">pip install guardrailprobe
+
+python3 -c "
+from guardrail_framework.core import get_framework
+from benchmark_report import BenchmarkRunner
+import datetime
+
+now = datetime.datetime.now()
+runner = BenchmarkRunner(framework=get_framework())
+arts = runner.generate_monthly_benchmark(
+    year=now.year,
+    month=now.month,
+    dry_run=True,    # skips unreachable backends silently
+)
+print('JSON :', arts.json_path)
+print('MD   :', arts.markdown_path)
+"
+
+# Or via CLI:
+python3 benchmark_report.py --dry-run
+python3 benchmark_report.py --year 2026 --month 6</pre>
+  </div>
+
+  <!-- ── Footer ── -->
+  <footer>
+    <p>Apache 2.0 &nbsp;·&nbsp; <a href="https://github.com/askuma/guardrailprobe" target="_blank" rel="noopener">github.com/askuma/guardrailprobe</a></p>
+    <p>Not affiliated with NeMo, Presidio, Lakera, or GuardrailsAI. Results are independent.</p>
+  </footer>
+
+</div><!-- /.container -->
+
+<script>
+(function () {
+  'use strict';
+
+  // ── Constants (mirrors App.jsx) ──────────────────────────────────────────
+  var OWASP = [
+    { ref: 'LLM01', label: 'Prompt Injection' },
+    { ref: 'LLM02', label: 'Insecure Output' },
+    { ref: 'LLM03', label: 'Training Data Poisoning' },
+    { ref: 'LLM04', label: 'Model DoS' },
+    { ref: 'LLM05', label: 'Supply Chain' },
+    { ref: 'LLM06', label: 'Sensitive Info Disclosure' },
+    { ref: 'LLM07', label: 'Insecure Plugin' },
+    { ref: 'LLM08', label: 'Excessive Agency' },
+    { ref: 'LLM09', label: 'Overreliance' },
+    { ref: 'LLM10', label: 'Model Theft' },
+  ];
+
+  var BACKEND_SCOPE = {
+    nemo:                  { type: 'general',     label: 'General LLM Safety' },
+    guardrails_ai:         { type: 'specialized', label: 'Validation Framework',   note: 'Requires validators; compare within PII / content use cases' },
+    presidio:              { type: 'specialized', label: 'PII Detection',           note: 'Designed for PII and credential detection (LLM06) only' },
+    lakera:                { type: 'general',     label: 'Prompt Security' },
+    ga_guard:              { type: 'general',     label: 'Content Safety' },
+    openai_moderation:     { type: 'specialized', label: 'Content Moderation',     note: 'Content policy classification only; subject to rate limits' },
+    azure_content_safety:  { type: 'general',     label: 'Content Safety' },
+    azure_prompt_shields:  { type: 'specialized', label: 'Prompt Injection Guard', note: 'Designed specifically for prompt injection detection' },
+    aws_bedrock:           { type: 'general',     label: 'General Guardrails' },
+    llama_firewall:        { type: 'general',     label: 'Prompt Injection Guard' },
+    llm_guard:             { type: 'general',     label: 'Input Safety Scanner' },
+  };
+
+  var TOTAL_PROBES = 78;
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+  }
+
+  function passColor(rate) {
+    if (rate >= 0.8) return 'var(--green)';
+    if (rate >= 0.5) return 'var(--amber)';
+    return 'var(--red)';
+  }
+
+  function badge(text, color) {
+    return '<span class="badge" style="background:' + color + '22;color:' + color + '">' + esc(text) + '</span>';
+  }
+
+  function fmtRate(r) {
+    if (r == null) return '<span style="color:var(--border)">—</span>';
+    var pct = (r * 100).toFixed(0);
+    return '<span style="color:' + passColor(r) + ';font-weight:600">' + pct + '%</span>';
+  }
+
+  window.dlFile = function dlFile(url, name) {
+    fetch(url)
+      .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.blob(); })
+      .then(function(blob) {
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(function() { URL.revokeObjectURL(a.href); a.remove(); }, 200);
+      })
+      .catch(function(e) { alert('Download failed: ' + e.message); });
+  };
+
+  function dlBtn(url, label) {
+    var name = url.split('/').pop();
+    var safeUrl  = url.replace(/\\/g, '').replace(/'/g, '');
+    var safeName = name.replace(/\\/g, '').replace(/'/g, '');
+    return '<button class="dl-btn" onclick="dlFile(\'' + safeUrl + '\',\'' + safeName + '\')">' + esc(label) + '</button>';
+  }
+
+  // ── Render KPI cards ──────────────────────────────────────────────────────
+  function renderKPIs(latest) {
+    var winner = latest.best_overall || '—';
+    var rate   = latest.per_backend_rates ? (latest.per_backend_rates[winner] || null) : null;
+    document.getElementById('kpi-best').textContent       = winner.replace(/_/g, ' ');
+    document.getElementById('kpi-best-rate').textContent  = rate != null ? rate.toFixed(1) + '% pass rate' : '—';
+    document.getElementById('kpi-backends').textContent   = (latest.backends_tested || []).length;
+    document.getElementById('kpi-probes').textContent     = latest.probe_count || TOTAL_PROBES;
+    document.getElementById('kpi-period').textContent     = (latest.month_name || '') + ' ' + (latest.year || '');
+    var updAt = latest.generated_at
+      ? new Date(latest.generated_at).toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric' })
+      : '—';
+    document.getElementById('kpi-updated').textContent = 'Updated ' + updAt;
+  }
+
+  // ── Render download bar ───────────────────────────────────────────────────
+  function renderDlBar(latest) {
+    var btns = '';
+    if (latest.json_url)     btns += dlBtn(latest.json_url,     '↓ JSON');
+    if (latest.markdown_url) btns += dlBtn(latest.markdown_url, '↓ Markdown');
+    if (latest.pdf_url)      btns += dlBtn(latest.pdf_url,      '↓ PDF');
+    if (!btns) return;
+    document.getElementById('dl-buttons').innerHTML = btns;
+    document.getElementById('dl-bar').style.display = 'flex';
+  }
+
+  // ── Render comparison table ───────────────────────────────────────────────
+  function renderBenchmark(latest, benchData) {
+    var el = document.getElementById('benchmark-card');
+    var heading = document.getElementById('latest-heading');
+    heading.textContent = (latest.month_name || '') + ' ' + (latest.year || '') + ' — Benchmark';
+
+    var summaries = (benchData && benchData.results && benchData.results.backend_summaries) || {};
+    var catWinners = (benchData && benchData.results && benchData.results.category_winners) || {};
+    var perBackendRates = latest.per_backend_rates || {};
+    var backends = latest.backends_tested || Object.keys(perBackendRates);
+
+    if (!backends.length) {
+      el.innerHTML = '<p class="placeholder">No benchmark data available.</p>';
+      return;
+    }
+
+    // Split into general / specialized (same logic as dashboard)
+    var general     = backends.filter(function(b) { return (BACKEND_SCOPE[b] || {}).type === 'general'; });
+    var specialized = backends.filter(function(b) { return (BACKEND_SCOPE[b] || {}).type !== 'general'; });
+    // Any unknown backend goes to general
+    backends.forEach(function(b) {
+      if (!BACKEND_SCOPE[b] && general.indexOf(b) === -1 && specialized.indexOf(b) === -1) general.push(b);
+    });
+
+    // Build pivot: backend → category → pass_rate (from backend_summaries)
+    var pivot = {};
+    backends.forEach(function(b) {
+      pivot[b] = {};
+      var bySelf = (summaries[b] && summaries[b].results_by_category) || {};
+      OWASP.forEach(function(o) {
+        var cell = bySelf[o.ref];
+        pivot[b][o.ref] = cell ? cell.pass_rate : null;
+      });
+    });
+
+    // ── thead ──
+    var html = '<div class="table-wrap"><table>';
+    html += '<thead><tr>';
+    html += '<th>Backend</th>';
+    html += '<th class="center">Overall %</th>';
+    OWASP.forEach(function(o) {
+      html += '<th class="center" title="' + esc(o.label) + '" style="font-size:11px">' + esc(o.ref) + '</th>';
+    });
+    html += '<th class="right">Avg ms</th>';
+    html += '</tr></thead>';
+
+    html += '<tbody>';
+
+    function renderRow(b) {
+      var summary   = summaries[b] || {};
+      var rawRate   = summary.pass_rate != null ? summary.pass_rate : (perBackendRates[b] != null ? perBackendRates[b] / 100 : null);
+      var ran       = summary.total_probes || 0;
+      var avgMs     = summary.average_latency_ms;
+      var isBest    = b === (latest.best_overall || (benchData && benchData.results && benchData.results.best_overall));
+      var isWorst   = b === (benchData && benchData.results && benchData.results.worst_overall) && !isBest;
+      var scopeMeta = BACKEND_SCOPE[b] || {};
+      var isSpec    = scopeMeta.type !== 'general';
+      var lowCov    = ran > 0 && ran < TOTAL_PROBES * 0.5;
+
+      var namePart = '<span style="color:var(--text);font-weight:' + (isBest ? 700 : 400) + '">' +
+        esc(b.replace(/_/g, ' ')) + '</span>';
+      if (isBest)  namePart += ' ' + badge('Best',  'var(--green)');
+      if (isWorst) namePart += ' ' + badge('Worst', 'var(--red)');
+      if (isSpec && scopeMeta.label) {
+        var title = scopeMeta.note ? ' title="' + esc(scopeMeta.note) + '"' : '';
+        namePart += ' <span' + title + ' style="font-size:10px;padding:2px 6px;border-radius:3px;background:var(--purple)22;color:var(--purple);font-weight:500;cursor:' + (scopeMeta.note ? 'help' : 'default') + '">' + esc(scopeMeta.label) + '</span>';
+      }
+
+      var overallPart = '<div style="display:flex;flex-direction:column;align-items:center;gap:2px">';
+      overallPart += '<span style="font-weight:700;font-size:14px;color:' + (rawRate != null ? passColor(rawRate) : 'var(--muted)') + '">';
+      overallPart += rawRate != null ? (rawRate * 100).toFixed(0) + '%' : '—';
+      overallPart += '</span>';
+      if (ran > 0) {
+        var probeTitle = esc(ran + ' of ' + TOTAL_PROBES + ' probes ran' + (lowCov ? ' — low coverage; excluded from Best/Worst ranking' : ''));
+        overallPart += '<span title="' + probeTitle + '" style="font-size:10px;color:' + (lowCov ? 'var(--amber)' : 'var(--muted)') + ';cursor:help">' +
+          ran + '/' + TOTAL_PROBES + (lowCov ? ' ⚠' : '') + '</span>';
+      }
+      overallPart += '</div>';
+
+      var row = '<tr>';
+      row += '<td>' + namePart + '</td>';
+      row += '<td class="center">' + overallPart + '</td>';
+      OWASP.forEach(function(o) {
+        var cr        = pivot[b][o.ref];
+        var isWinner  = catWinners[o.ref] === b;
+        if (cr != null) {
+          row += '<td class="center"><span style="color:' + passColor(cr) + ';font-weight:' + (isWinner ? 700 : 400) + ';font-size:12px">' +
+            (cr * 100).toFixed(0) + '%' + (isWinner ? ' ★' : '') + '</span></td>';
+        } else {
+          row += '<td class="center" title="Category not tested — quota exhausted or credentials missing"><span style="color:var(--border)">—</span></td>';
+        }
+      });
+      row += '<td class="right" style="color:var(--sub)">' + (avgMs != null ? avgMs.toFixed(0) : '—') + '</td>';
+      row += '</tr>';
+      return row;
+    }
+
+    function groupHeader(label, color) {
+      var cols = 2 + OWASP.length + 1;
+      return '<tr class="group-hdr"><td colspan="' + cols + '" style="color:' + color + ';background:' + color + '0a">' + esc(label) + '</td></tr>';
+    }
+
+    if (general.length)     { html += groupHeader('General Purpose Guardrails', 'var(--blue)');  general.forEach(function(b)     { html += renderRow(b); }); }
+    if (specialized.length) { html += groupHeader('Specialized Tools',          'var(--purple)'); specialized.forEach(function(b) { html += renderRow(b); }); }
+
+    html += '</tbody></table></div>';
+
+    // ── Footnotes (same text as dashboard) ──
+    html += '<div class="footnotes">';
+    html += '<strong>Notes</strong>';
+    html += '<ul>';
+    html += '<li><span style="color:var(--border)">—</span> in a category cell means the backend did not test those probes (quota exhausted or credentials missing).</li>';
+    html += '<li>★ marks the category winner (highest pass rate for that OWASP category).</li>';
+    html += '<li><span style="color:var(--amber)">⚠ n/78 probes</span> — fewer than 50% of probes ran; backend excluded from Best / Worst ranking.</li>';
+    html += '<li><span style="color:var(--purple)">Specialized Tools</span> are purpose-built for a specific use case (PII detection, content moderation, injection detection) and are not directly comparable to general-purpose guardrails on overall pass rate.</li>';
+    html += '</ul>';
+    html += '</div>';
+
+    el.innerHTML = html;
+  }
+
+  // ── Render archive ────────────────────────────────────────────────────────
+  function renderArchive(archive) {
+    var el = document.getElementById('archive-card');
+    if (!archive || !archive.length) {
+      el.innerHTML = '<p class="placeholder">No archived benchmarks yet.</p>';
+      return;
+    }
+    var rows = archive.slice().reverse().map(function(entry) {
+      var winner = entry.best_overall
+        ? esc(entry.best_overall.replace(/_/g, ' ')) + (entry.best_overall_pass_rate != null
+            ? ' <span style="color:var(--muted)">(' + entry.best_overall_pass_rate.toFixed(1) + '%)</span>'
+            : '')
+        : '—';
+      var backends = (entry.backends_tested || []).map(function(b) { return esc(b.replace(/_/g, ' ')); }).join(', ');
+      var dlPdf  = entry.pdf_url      ? dlBtn(entry.pdf_url,      'PDF')      : '';
+      var dlJson = entry.json_url     ? dlBtn(entry.json_url,     'JSON')     : '';
+      var dlMd   = entry.markdown_url ? dlBtn(entry.markdown_url, 'Markdown') : '';
+      return '<tr>' +
+        '<td>' + esc((entry.month_name || '') + ' ' + (entry.year || '')) + '</td>' +
+        '<td class="archive-winner">' + winner + '</td>' +
+        '<td style="color:var(--sub)">' + backends + '</td>' +
+        '<td><div class="archive-dl">' + dlPdf + ' ' + dlJson + ' ' + dlMd + '</div></td>' +
+        '</tr>';
+    }).join('');
+    el.innerHTML = '<div class="table-wrap"><table>' +
+      '<thead><tr><th>Month</th><th>Winner</th><th>Backends</th><th>Download</th></tr></thead>' +
+      '<tbody>' + rows + '</tbody>' +
+      '</table></div>';
+  }
+
+  // ── Main load ─────────────────────────────────────────────────────────────
+  function load() {
+    fetch('latest_index.json?_=' + Date.now())
+      .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function(index) {
+        var latest = index.latest || null;
+        if (!latest) { throw new Error('no data'); }
+
+        renderKPIs(latest);
+        renderDlBar(latest);
+        renderArchive(index.archive || []);
+
+        // Fetch full benchmark JSON for per-category data
+        var benchUrl = latest.json_url ? latest.json_url + '?_=' + Date.now() : null;
+        if (benchUrl) {
+          fetch(benchUrl)
+            .then(function(r) { return r.ok ? r.json() : Promise.reject('bench fetch failed'); })
+            .then(function(benchData) { renderBenchmark(latest, benchData); })
+            .catch(function() { renderBenchmark(latest, null); });
+        } else {
+          renderBenchmark(latest, null);
+        }
+      })
+      .catch(function() {
+        document.getElementById('benchmark-card').innerHTML =
+          '<p class="placeholder">Benchmark data unavailable — check back after the next monthly run.</p>';
+        document.getElementById('archive-card').innerHTML =
+          '<p class="placeholder">No archived benchmarks yet.</p>';
+      });
+  }
+
+  document.addEventListener('DOMContentLoaded', load);
+})();
+</script>
+</body>
+</html>
