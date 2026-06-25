@@ -9,7 +9,6 @@ status returns, graceful skip behaviour when SDKs are absent).
 from __future__ import annotations
 
 import importlib
-from typing import Type
 from unittest.mock import patch
 
 import pytest
@@ -29,7 +28,7 @@ def test_registry_backend_names():
     expected = {
         "nemo", "guardrails_ai", "presidio", "lakera",
         "openai_moderation", "azure_content_safety", "azure_prompt_shields",
-        "aws_bedrock", "llama_firewall", "llm_guard", "custom_http",
+        "aws_bedrock", "llama_firewall", "llm_guard", "ga_guard",
     }
     assert set(REGISTRY.names()) == expected
 
@@ -128,13 +127,12 @@ def test_guardrails_ai_allows_benign():
     assert resp.action == ActionType.ALLOW
 
 
-# ── Custom HTTP URL validation ────────────────────────────────────────────────
+# ── GA Guard URL validation ───────────────────────────────────────────────────
 
 
-def test_custom_http_no_url_returns_skipped():
-    adapter = REGISTRY.get("custom_http")
+def test_ga_guard_no_url_returns_skipped():
+    assert REGISTRY.get("ga_guard") is not None
     with patch.dict("os.environ", {}, clear=True):
-        import importlib
         import guardrailprobe.adapters.custom_http as m
         importlib.reload(m)
         fresh = m.CustomHTTPAdapter()
@@ -142,11 +140,9 @@ def test_custom_http_no_url_returns_skipped():
     assert resp.action == ActionType.SKIPPED
 
 
-def test_custom_http_rejects_http_url():
-    adapter = REGISTRY.get("custom_http")
+def test_ga_guard_rejects_http_url():
     from guardrailprobe.adapters.custom_http import CustomHTTPAdapter
     a = CustomHTTPAdapter()
-    # Patch env to set an http:// URL
     with patch.dict("os.environ", {"GA_GUARD_API_URL": "http://insecure.example/check"}):
         resp = a.run_probe("payload")
     assert resp.action == ActionType.SKIPPED

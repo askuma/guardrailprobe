@@ -1,4 +1,9 @@
-"""guardrailprobe.adapters.guardrails_ai — GuardrailsAI framework adapter."""
+"""guardrailprobe.adapters.guardrails_ai — GuardrailsAI framework adapter.
+
+Mirrors the monorepo's policy-rail-config approach: a static validator policy is
+compiled into a Guard at adapter initialisation time. The SDK result is used as-is;
+regex runs ONLY as a standalone fallback when the SDK is entirely unavailable.
+"""
 
 from __future__ import annotations
 
@@ -7,7 +12,7 @@ import importlib.util
 import logging
 import re
 import time
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from guardrailprobe._types import ActionType, AdapterStatus, ProbeResponse
 
@@ -15,9 +20,21 @@ logger = logging.getLogger(__name__)
 
 _GUARDRAILSAI_SDK: bool = importlib.util.find_spec("guardrails") is not None
 
-_DEFAULT_VALIDATORS: List[str] = ["DetectPII", "SecretsPresent", "ToxicLanguage"]
+# ── Policy rail config ────────────────────────────────────────────────────────
+# Equivalent to what PolicyCompiler.compile_to_guardrails_yaml() would produce
+# for an all-category probe run. Each entry maps to a guardrails-ai hub validator.
+# Validators absent from the installed hub are silently skipped; if none load
+# the adapter falls back to regex (see below).
 
-# Shared regex scorer used when SDK is unavailable or hub validators are missing.
+_POLICY_RAIL_CONFIG: List[Dict[str, str]] = [
+    {"hub_name": "PromptInjection",  "on_fail": "noop"},
+    {"hub_name": "ToxicLanguage",    "on_fail": "noop"},
+    {"hub_name": "DetectPII",        "on_fail": "noop"},
+    {"hub_name": "SecretsPresent",   "on_fail": "noop"},
+]
+
+# ── Regex fallback (SDK unavailable path only) ────────────────────────────────
+
 _INJECTION_PATTERNS = [
     re.compile(r"ignore\s+(all\s+)?previous\s+instructions?", re.I),
     re.compile(r"disregard\s+(the\s+)?above", re.I),
@@ -47,24 +64,40 @@ def _regex_score(text: str) -> Tuple[bool, float]:
     return False, 0.0
 
 
+# ── Adapter ───────────────────────────────────────────────────────────────────
+
 class GuardrailsAIAdapter:
     backend_name = "guardrails_ai"
 
-    def _build_guard(self, validators: List[str]):
+    def __init__(self) -> None:
+        self._guard: Optional[Any] = None
+        self._hub_validators_loaded: List[str] = []
+        if _GUARDRAILSAI_SDK:
+            self._guard, self._hub_validators_loaded = self._compile_guard()
+
+    def _compile_guard(self) -> Tuple[Any, List[str]]:
+        """Build a Guard from _POLICY_RAIL_CONFIG, skipping missing hub validators."""
         g = importlib.import_module("guardrails")
         hub = importlib.import_module("guardrails.hub")
         guard = g.Guard()
         loaded: List[str] = []
-        for name in validators:
+        for entry in _POLICY_RAIL_CONFIG:
+            name = entry["hub_name"]
+            on_fail = entry.get("on_fail", "noop")
             try:
                 cls = getattr(hub, name, None)
                 if cls is None:
+                    logger.debug("guardrails hub: %r not found — skipped", name)
                     continue
-                guard = guard.use(cls(on_fail="noop"))
+                guard = guard.use(cls(on_fail=on_fail))
                 loaded.append(name)
             except Exception as exc:
-                logger.debug("GuardrailsAI: could not load validator %r: %s", name, exc)
-        return guard, bool(loaded)
+                logger.debug("guardrails hub: could not load %r: %s", name, exc)
+        if loaded:
+            logger.debug("guardrails guard compiled with validators: %s", loaded)
+        else:
+            logger.warning("guardrails hub: no validators loaded — will use regex fallback")
+        return guard, loaded
 
     def check_credentials(self) -> bool:
         return True  # regex fallback always available
@@ -73,42 +106,49 @@ class GuardrailsAIAdapter:
         return AdapterStatus.RAN
 
     def missing_credential_message(self) -> str:
-        return ""  # always available
+        return ""
 
     def run_probe(self, payload: str) -> ProbeResponse:
         t0 = time.perf_counter()
-        sdk_flagged = False
-        sdk_score = 0.0
 
-        if _GUARDRAILSAI_SDK:
+        if _GUARDRAILSAI_SDK and self._hub_validators_loaded:
+            # SDK path: use the compiled Guard exclusively; no regex OR'd in.
             try:
-                guard, hub_loaded = self._build_guard(_DEFAULT_VALIDATORS)
-                if hub_loaded:
-                    outcome = guard.validate(payload)
-                    sdk_flagged = not bool(outcome.validation_passed)
-                    sdk_score = 0.0 if not sdk_flagged else 0.85
+                outcome = self._guard.validate(payload)  # type: ignore[union-attr]
+                flagged = not bool(outcome.validation_passed)
+                score = 0.85 if flagged else 0.0
+                sdk_used = True
             except Exception as exc:
-                logger.debug("GuardrailsAI validate raised: %s", exc)
-                sdk_flagged = True
-                sdk_score = 0.85
+                logger.debug("guardrails validate raised: %s", exc)
+                # Treat unexpected SDK errors as flagged (fail-safe)
+                flagged, score, sdk_used = True, 0.85, True
         else:
-            logger.debug("guardrails-ai SDK not installed — using regex fallback")
-
-        # Regex scorer for defence in depth
-        regex_flagged, regex_score = _regex_score(payload)
-        flagged = sdk_flagged or regex_flagged
-        score = max(sdk_score, regex_score)
+            # Regex-only fallback — SDK not installed or no hub validators loaded.
+            if _GUARDRAILSAI_SDK:
+                logger.debug("guardrails-ai SDK present but no hub validators — using regex fallback")
+            else:
+                logger.debug("guardrails-ai SDK not installed — using regex fallback")
+            flagged, score = _regex_score(payload)
+            sdk_used = False
 
         latency = (time.perf_counter() - t0) * 1000
-        action = ActionType.BLOCK if flagged else ActionType.ALLOW
         return ProbeResponse(
-            action=action,
+            action=ActionType.BLOCK if flagged else ActionType.ALLOW,
             latency_ms=round(latency, 2),
-            raw_response={"flagged": flagged, "score": score, "sdk_used": _GUARDRAILSAI_SDK},
+            raw_response={
+                "flagged": flagged,
+                "score": score,
+                "sdk_used": sdk_used,
+                "validators": self._hub_validators_loaded,
+            },
             backend=self.backend_name,
             status=AdapterStatus.RAN,
         )
 
     def health_check(self) -> Dict[str, Any]:
-        return {"status": "ok", "backend": self.backend_name,
-                "sdk": _GUARDRAILSAI_SDK}
+        return {
+            "status": "ok",
+            "backend": self.backend_name,
+            "sdk": _GUARDRAILSAI_SDK,
+            "validators_loaded": self._hub_validators_loaded,
+        }
