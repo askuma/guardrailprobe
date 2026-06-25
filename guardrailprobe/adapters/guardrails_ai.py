@@ -75,10 +75,22 @@ class GuardrailsAIAdapter:
         if _GUARDRAILSAI_SDK:
             self._guard, self._hub_validators_loaded = self._compile_guard()
 
-    def _compile_guard(self) -> Tuple[Any, List[str]]:
-        """Build a Guard from _POLICY_RAIL_CONFIG, skipping missing hub validators."""
-        g = importlib.import_module("guardrails")
-        hub = importlib.import_module("guardrails.hub")
+    def _compile_guard(self) -> Tuple[Optional[Any], List[str]]:
+        """Build a Guard from _POLICY_RAIL_CONFIG, skipping missing hub validators.
+
+        Returns (None, []) if the guardrails package itself fails to import
+        (e.g. broken transitive dependency like pydantic_core) so the adapter
+        degrades to regex without crashing the registry.
+        """
+        try:
+            g = importlib.import_module("guardrails")
+            hub = importlib.import_module("guardrails.hub")
+        except ImportError as exc:
+            logger.warning(
+                "guardrails-ai import failed (%s) — using regex fallback", exc
+            )
+            return None, []
+
         guard = g.Guard()
         loaded: List[str] = []
         for entry in _POLICY_RAIL_CONFIG:
@@ -120,7 +132,6 @@ class GuardrailsAIAdapter:
                 sdk_used = True
             except Exception as exc:
                 logger.debug("guardrails validate raised: %s", exc)
-                # Treat unexpected SDK errors as flagged (fail-safe)
                 flagged, score, sdk_used = True, 0.85, True
         else:
             # Regex-only fallback — SDK not installed or no hub validators loaded.

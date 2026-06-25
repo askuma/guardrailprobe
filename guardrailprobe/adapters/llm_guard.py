@@ -22,6 +22,12 @@ _scanners: Optional[List[Any]] = None
 _scanners_lock = threading.Lock()
 
 
+_BANNED_TOPICS = [
+    "violence", "weapons", "explosives", "malware", "hacking", "exploitation",
+    "self-harm", "suicide", "drug synthesis", "human trafficking",
+]
+
+
 def _get_scanners() -> Optional[List[Any]]:
     global _scanners
     if _scanners is not None:
@@ -29,13 +35,29 @@ def _get_scanners() -> Optional[List[Any]]:
     with _scanners_lock:
         if _scanners is not None:
             return _scanners
+        loaded: List[Any] = []
         try:
-            from llm_guard.input_scanners import PromptInjection, Toxicity  # noqa: PLC0415
-            _scanners = [PromptInjection(), Toxicity()]
-            return _scanners
+            from llm_guard.input_scanners import PromptInjection  # noqa: PLC0415
+            loaded.append(PromptInjection(threshold=0.4))
         except Exception as exc:
-            logger.error("LLM Guard scanner init failed: %s", exc)
+            logger.warning("LLM Guard PromptInjection unavailable: %s", exc)
+        try:
+            from llm_guard.input_scanners import Toxicity  # noqa: PLC0415
+            loaded.append(Toxicity(threshold=0.4))
+        except Exception as exc:
+            logger.warning("LLM Guard Toxicity unavailable: %s", exc)
+        try:
+            from llm_guard.input_scanners import BanTopics  # noqa: PLC0415
+            loaded.append(BanTopics(topics=_BANNED_TOPICS, threshold=0.6))
+        except Exception as exc:
+            logger.debug("LLM Guard BanTopics unavailable (skipping): %s", exc)
+        if not loaded:
+            logger.error("LLM Guard: no scanners could be loaded")
             return None
+        _scanners = loaded
+        logger.info("LLM Guard: loaded %d scanner(s): %s",
+                    len(_scanners), [type(s).__name__ for s in _scanners])
+        return _scanners
 
 
 class LLMGuardAdapter:

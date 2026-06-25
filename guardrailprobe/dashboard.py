@@ -9,7 +9,8 @@ GET  /                      — probe builder home page
 GET  /api/backends          — JSON list of adapters + credential status
 GET  /api/probes            — JSON probe library (filterable by category/severity)
 POST /api/probe/run         — run a single ad-hoc payload against one backend
-POST /api/benchmark/run     — trigger a full comparison run
+POST /api/benchmark/run              — start a full comparison run (returns run_id immediately)
+GET  /api/benchmark/status/<run_id> — poll progress of a running benchmark
 GET  /api/benchmark/latest          — return the latest benchmark JSON
 GET  /api/benchmark/files           — list available report files (json/md/pdf per run)
 GET  /api/benchmark/download/<name> — download a specific report file
@@ -26,6 +27,7 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
+from uuid import uuid4
 
 from flask import Flask, jsonify, request, send_file
 from jinja2 import DictLoader
@@ -46,6 +48,9 @@ def _load_custom_probes() -> list:
 def _save_custom_probes(probes: list) -> None:
     _CUSTOM_PROBES_FILE.parent.mkdir(parents=True, exist_ok=True)
     _CUSTOM_PROBES_FILE.write_text(json.dumps(probes, indent=2))
+
+
+_run_status: Dict[str, Any] = {}
 
 
 # ── Embedded HTML template ────────────────────────────────────────────────────
@@ -172,6 +177,18 @@ _INDEX_HTML = """<!DOCTYPE html>
     .probe-inline-result { margin-top: 10px; padding: 10px 12px; background: var(--bg);
                            border: 1px solid var(--border); border-radius: 6px;
                            font-size: 0.78rem; display: none; }
+
+    /* ── Progress bar ───────────────────────────────────────────────────── */
+    .progress-track { background: #1e3a5f; border-radius: 4px; height: 8px; overflow: hidden; }
+    .progress-fill  { background: var(--accent); height: 100%; width: 0%;
+                      transition: width 0.4s ease; border-radius: 4px; }
+
+    /* ── Chip group labels ──────────────────────────────────────────────── */
+    .chip-group-label { font-size: 0.62rem; font-weight: 700; text-transform: uppercase;
+                        letter-spacing: 0.1em; color: var(--muted); margin-top: 10px;
+                        width: 100%; padding-bottom: 2px;
+                        border-bottom: 1px solid var(--border); }
+    .chip-group-label:first-child { margin-top: 4px; }
 
     /* ── Misc ───────────────────────────────────────────────────────────── */
     .spinner { border: 3px solid var(--border); border-top: 3px solid var(--accent);
@@ -365,6 +382,10 @@ _INDEX_HTML = """<!DOCTYPE html>
         <div class="row-gap">
           <button class="btn" id="bench-btn">▶ Start Benchmark</button>
         </div>
+        <div id="bench-progress" style="display:none;margin-top:12px">
+          <div class="progress-track"><div id="bench-fill" class="progress-fill"></div></div>
+          <div id="bench-prog-text" style="font-size:0.75rem;color:var(--muted);margin-top:6px">Starting…</div>
+        </div>
         <div class="result-box" id="bench-result" style="display:none;margin-top:12px"></div>
         <div id="bench-downloads" class="row-gap" style="display:none;margin-top:4px"></div>
       </div>
@@ -403,6 +424,21 @@ _INDEX_HTML = """<!DOCTYPE html>
                skipped:'gray', error:'red'};
     return pill(a.toUpperCase(), m[a] || 'gray');
   }
+
+  // ── Backend grouping (mirrors runner.py BACKEND_SCOPE) ──────────────────────
+  const BACKEND_GROUPS = {
+    nemo:                 'General',
+    lakera:               'General',
+    ga_guard:             'General',
+    azure_content_safety: 'General',
+    aws_bedrock:          'General',
+    llama_firewall:       'General',
+    llm_guard:            'General',
+    guardrails_ai:        'Specialized',
+    presidio:             'Specialized',
+    openai_moderation:    'Specialized',
+    azure_prompt_shields: 'Specialized',
+  };
 
   // ── Adapter status ───────────────────────────────────────────────────────────
   let _allBackends = [];
@@ -461,18 +497,30 @@ _INDEX_HTML = """<!DOCTYPE html>
       sel.appendChild(o);
     }
 
-    // ── benchmark chips ──
+    // ── benchmark chips (grouped by General / Specialized) ──
     const chips = $('bench-chips');
     chips.innerHTML = '';
+    const groups = {General: [], Specialized: []};
     data.forEach(b => {
-      const btn = document.createElement('button');
-      btn.className = 'chip' + (b.ready ? ' active' : ' disabled');
-      btn.dataset.backend = b.backend;
-      btn.title = b.ready ? '' : (b.message || 'Not configured');
-      btn.innerHTML = `<span class="dot"></span>${b.backend}`;
-      if (b.ready) btn.addEventListener('click', () => btn.classList.toggle('active'));
-      chips.appendChild(btn);
+      const g = BACKEND_GROUPS[b.backend] || 'General';
+      groups[g].push(b);
     });
+    for (const [gname, members] of Object.entries(groups)) {
+      if (!members.length) continue;
+      const lbl = document.createElement('div');
+      lbl.className = 'chip-group-label';
+      lbl.textContent = gname;
+      chips.appendChild(lbl);
+      members.forEach(b => {
+        const btn = document.createElement('button');
+        btn.className = 'chip' + (b.ready ? ' active' : ' disabled');
+        btn.dataset.backend = b.backend;
+        btn.title = b.ready ? '' : (b.message || 'Not configured');
+        btn.innerHTML = `<span class="dot"></span>${b.backend}`;
+        if (b.ready) btn.addEventListener('click', () => btn.classList.toggle('active'));
+        chips.appendChild(btn);
+      });
+    }
 
     // ── setup guide ──
     const notReady = data.filter(b => !b.ready).map(b => b.backend);
@@ -554,12 +602,20 @@ _INDEX_HTML = """<!DOCTYPE html>
     const backends = [...document.querySelectorAll('#bench-chips .chip.active')]
                      .map(c => c.dataset.backend).join(',') || null;
 
-    const box = $('bench-result');
-    box.style.display = 'block';
-    box.textContent   = 'Running benchmark — this may take several minutes…';
-    const btn = $('bench-btn');
+    const box      = $('bench-result');
+    const prog     = $('bench-progress');
+    const fill     = $('bench-fill');
+    const progText = $('bench-prog-text');
+    const btn      = $('bench-btn');
+
+    box.style.display  = 'none';
+    $('bench-downloads').style.display = 'none';
+    prog.style.display = 'block';
+    fill.style.width   = '0%';
+    progText.textContent = 'Starting…';
     btn.disabled = true;
 
+    let runId = null;
     try {
       const res  = await fetch('/api/benchmark/run', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -567,24 +623,59 @@ _INDEX_HTML = """<!DOCTYPE html>
       });
       const data = await res.json();
       if (data.error) {
-        box.textContent = 'Error: ' + data.error;
-      } else {
-        let t  = `✓ Benchmark complete\\n`;
-        t += `Run ID:   ${data.run_id}\\n`;
-        t += `Backends: ${(data.backends_tested || []).join(', ')}\\n`;
-        if ((data.backends_skipped || []).length)
-          t += `Skipped:  ${data.backends_skipped.join(', ')}\\n`;
-        t += `Probes:   ${data.probe_count}\\n`;
-        box.textContent = t;
-        // extract stem from json_path, e.g. "/app/docs/benchmarks/benchmark_2026_06.json"
-        const stem = data.json_path
-          ? data.json_path.split('/').pop().replace('.json', '')
-          : null;
+        prog.style.display = 'none';
+        box.style.display  = 'block';
+        box.textContent    = 'Error: ' + data.error;
+        btn.disabled = false;
+        return;
+      }
+      runId = data.run_id;
+    } catch(e) {
+      prog.style.display = 'none';
+      box.style.display  = 'block';
+      box.textContent    = 'Error: ' + e.message;
+      btn.disabled = false;
+      return;
+    }
+
+    // Poll for progress every 1.2 s
+    while (true) {
+      await new Promise(r => setTimeout(r, 1200));
+      let status;
+      try {
+        const sr = await fetch('/api/benchmark/status/' + runId);
+        status = await sr.json();
+      } catch(_) { continue; }
+
+      const pct   = status.pct  || 0;
+      const done  = status.done || 0;
+      const total = status.total || 0;
+      fill.style.width     = pct + '%';
+      progText.textContent = total > 0
+        ? `${done} / ${total} probes  (${pct}%)` : 'Running…';
+
+      if (status.status === 'complete') {
+        prog.style.display = 'none';
+        const r = status.result || {};
+        let t  = '✓ Benchmark complete\\n';
+        t += `Run ID:   ${r.run_id || runId}\\n`;
+        t += `Backends: ${(r.backends_tested || []).join(', ')}\\n`;
+        const skipped = Object.keys(r.backends_skipped || {});
+        if (skipped.length) t += `Skipped:  ${skipped.join(', ')}\\n`;
+        t += `Probes:   ${r.probe_count}\\n`;
+        box.style.display = 'block';
+        box.textContent   = t;
+        const stem = (r.json_path || '').split('/').pop().replace('.json', '') || null;
         if (stem) showDownloadButtons(stem, $('bench-downloads'));
         loadLatest();
+        break;
       }
-    } catch(e) {
-      box.textContent = 'Error: ' + e.message;
+      if (status.status === 'error') {
+        prog.style.display = 'none';
+        box.style.display  = 'block';
+        box.textContent    = 'Error: ' + (status.error || 'Unknown error');
+        break;
+      }
     }
     btn.disabled = false;
   }
@@ -801,8 +892,6 @@ def create_app() -> Flask:
     app = Flask(__name__, template_folder=None)
     app.jinja_env.loader = DictLoader({"index.html": _INDEX_HTML})
 
-    _benchmark_lock = threading.Lock()
-
     # ── Routes ────────────────────────────────────────────────────────────────
 
     @app.get("/")
@@ -865,44 +954,71 @@ def create_app() -> Flask:
 
     @app.post("/api/benchmark/run")
     def api_benchmark_run():
-        with _benchmark_lock:
-            body     = request.get_json(force=True)
-            year     = body.get("year")  or datetime.now(timezone.utc).year
-            month    = body.get("month") or datetime.now(timezone.utc).month
-            dry_run  = bool(body.get("dry_run", False))
-            backends = body.get("backends")  # comma-separated string or None
+        body     = request.get_json(force=True)
+        year     = body.get("year")  or datetime.now(timezone.utc).year
+        month    = body.get("month") or datetime.now(timezone.utc).month
+        dry_run  = bool(body.get("dry_run", False))
+        backends = body.get("backends")
 
-            from guardrailprobe._types import GuardrailBackend
-            from guardrailprobe.report import BenchmarkRunner
+        from guardrailprobe._types import GuardrailBackend
+        from guardrailprobe.report import BenchmarkRunner
 
-            backend_list = None
-            if backends:
-                try:
-                    backend_list = [
-                        GuardrailBackend(b.strip())
-                        for b in backends.split(",") if b.strip()
-                    ]
-                except ValueError as exc:
-                    return jsonify({"error": f"Invalid backend: {exc}"}), 400
-
-            runner = BenchmarkRunner()
+        backend_list = None
+        if backends:
             try:
+                backend_list = [
+                    GuardrailBackend(b.strip())
+                    for b in backends.split(",") if b.strip()
+                ]
+            except ValueError as exc:
+                return jsonify({"error": f"Invalid backend: {exc}"}), 400
+
+        run_id = str(uuid4())
+        _run_status[run_id] = {"status": "running", "done": 0, "total": 0, "pct": 0}
+
+        def _do_run() -> None:
+            def progress_cb(backend_val: str, done: int, total: int) -> None:
+                entry = _run_status.get(run_id, {})
+                bkds  = entry.setdefault("backends", {})
+                bkds[backend_val] = {"done": done, "total": total}
+                total_done = sum(v["done"] for v in bkds.values())
+                total_all  = sum(v["total"] for v in bkds.values())
+                entry["done"]  = total_done
+                entry["total"] = total_all
+                entry["pct"]   = round(total_done / total_all * 100) if total_all else 0
+
+            try:
+                runner = BenchmarkRunner()
                 arts = runner.generate_monthly_benchmark(
                     year=year, month=month,
                     backends=backend_list, dry_run=dry_run,
+                    progress_cb=progress_cb,
                 )
+                _run_status[run_id].update({
+                    "status": "complete",
+                    "pct": 100,
+                    "result": {
+                        "run_id":           arts.run_id,
+                        "json_path":        arts.json_path,
+                        "markdown_path":    arts.markdown_path,
+                        "pdf_path":         arts.pdf_path,
+                        "backends_tested":  arts.backends_tested,
+                        "backends_skipped": arts.backends_skipped,
+                        "probe_count":      arts.probe_count,
+                    },
+                })
             except Exception as exc:
-                return jsonify({"error": str(exc)}), 500
+                _run_status[run_id].update({"status": "error", "error": str(exc)})
 
-            return jsonify({
-                "run_id":           arts.run_id,
-                "json_path":        arts.json_path,
-                "markdown_path":    arts.markdown_path,
-                "pdf_path":         arts.pdf_path,
-                "backends_tested":  arts.backends_tested,
-                "backends_skipped": arts.backends_skipped,
-                "probe_count":      arts.probe_count,
-            })
+        threading.Thread(target=_do_run, daemon=True).start()
+        return jsonify({"run_id": run_id})
+
+    @app.get("/api/benchmark/status/<run_id>")
+    def api_benchmark_status(run_id: str):
+        entry = _run_status.get(run_id)
+        if entry is None:
+            return jsonify({"error": "Unknown run_id"}), 404
+        return jsonify(entry)
 
     @app.get("/api/benchmark/latest")
     def api_benchmark_latest():

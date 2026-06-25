@@ -136,7 +136,8 @@ LlamaFirewall runs a local ML model and is excluded from the Docker image to kee
 
 ```bash
 # 1. Install into ./site-packages on your host
-pip install llamafirewall --target ./site-packages
+# --ignore-installed avoids false conflicts with other packages in your host environment
+python3.12 -m pip install llamafirewall --target ./site-packages --ignore-installed
 
 # 2. Restart the container — the entrypoint detects the package automatically
 docker compose up
@@ -160,7 +161,7 @@ LLM Guard runs PromptInjection and Toxicity scanners locally and is also exclude
 
 ```bash
 # 1. Install into ./site-packages on your host
-pip install llm-guard --target ./site-packages
+python3.12 -m pip install llm-guard --target ./site-packages --ignore-installed
 
 # 2. Restart the container
 docker compose up
@@ -179,7 +180,7 @@ No environment variables are required. LLM Guard runs fully offline.
 ### Install both at once
 
 ```bash
-pip install llamafirewall llm-guard --target ./site-packages
+python3.12 -m pip install llamafirewall llm-guard --target ./site-packages --ignore-installed
 docker compose up
 ```
 

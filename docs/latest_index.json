@@ -3,8 +3,8 @@
     "year": 2026,
     "month": 6,
     "month_name": "June",
-    "run_id": "2ee4d9dd-af6c-4fa9-b786-16db01a4bce8",
-    "generated_at": "2026-06-25T09:40:50.115704+00:00",
+    "run_id": "7cb895c9-2e2b-4def-ad4d-b88c5024400f",
+    "generated_at": "2026-06-25T15:01:59.538358+00:00",
     "backends_tested": [
       "nemo",
       "guardrails_ai",
@@ -13,7 +13,8 @@
       "openai_moderation",
       "azure_content_safety",
       "azure_prompt_shields",
-      "aws_bedrock"
+      "aws_bedrock",
+      "custom_http"
     ],
     "best_overall": "lakera",
     "best_overall_pass_rate": 83.3,
@@ -24,22 +25,30 @@
       "lakera": 83.3,
       "openai_moderation": 100.0,
       "azure_content_safety": 25.6,
-      "azure_prompt_shields": 85.9,
-      "aws_bedrock": 59.0
+      "azure_prompt_shields": 25.3,
+      "aws_bedrock": 59.0,
+      "llama_firewall": 0.0,
+      "llm_guard": 0.0,
+      "ga_guard": 0.0,
+      "custom_http": 85.9
     },
-    "probe_count": 547,
-    "backends_skipped": {},
+    "probe_count": 624,
+    "backends_skipped": {
+      "llama_firewall": "MISSING_CREDENTIALS",
+      "llm_guard": "MISSING_CREDENTIALS",
+      "ga_guard": "MISSING_CREDENTIALS"
+    },
     "json_url": "benchmarks/benchmark_2026_06.json",
     "markdown_url": "benchmarks/benchmark_2026_06.md",
-    "pdf_url": null
+    "pdf_url": "benchmarks/benchmark_2026_06.pdf"
   },
   "archive": [
     {
       "year": 2026,
       "month": 6,
       "month_name": "June",
-      "run_id": "2ee4d9dd-af6c-4fa9-b786-16db01a4bce8",
-      "generated_at": "2026-06-25T09:40:50.115704+00:00",
+      "run_id": "7cb895c9-2e2b-4def-ad4d-b88c5024400f",
+      "generated_at": "2026-06-25T15:01:59.538358+00:00",
       "backends_tested": [
         "nemo",
         "guardrails_ai",
@@ -48,7 +57,8 @@
         "openai_moderation",
         "azure_content_safety",
         "azure_prompt_shields",
-        "aws_bedrock"
+        "aws_bedrock",
+        "custom_http"
       ],
       "best_overall": "lakera",
       "best_overall_pass_rate": 83.3,
@@ -59,14 +69,22 @@
         "lakera": 83.3,
         "openai_moderation": 100.0,
         "azure_content_safety": 25.6,
-        "azure_prompt_shields": 85.9,
-        "aws_bedrock": 59.0
+        "azure_prompt_shields": 25.3,
+        "aws_bedrock": 59.0,
+        "llama_firewall": 0.0,
+        "llm_guard": 0.0,
+        "ga_guard": 0.0,
+        "custom_http": 85.9
       },
-      "probe_count": 547,
-      "backends_skipped": {},
+      "probe_count": 624,
+      "backends_skipped": {
+        "llama_firewall": "MISSING_CREDENTIALS",
+        "llm_guard": "MISSING_CREDENTIALS",
+        "ga_guard": "MISSING_CREDENTIALS"
+      },
       "json_url": "benchmarks/benchmark_2026_06.json",
       "markdown_url": "benchmarks/benchmark_2026_06.md",
-      "pdf_url": null
+      "pdf_url": "benchmarks/benchmark_2026_06.pdf"
     }
   ]
 }

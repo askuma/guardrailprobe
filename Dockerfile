@@ -35,9 +35,12 @@ ARG SKIP_SPACY=0
 RUN if [ "$SKIP_SPACY" = "0" ]; then python -m spacy download en_core_web_lg; fi
 
 # Install GuardrailsAI free hub validators (non-fatal — falls back to regex scorer)
+# Re-pin pydantic>=2 after hub installs because guardrails hub can downgrade it,
+# which breaks pydantic_core._pydantic_core (the compiled C extension).
 RUN pip install --no-cache-dir detect-secrets && \
     guardrails hub install hub://guardrails/detect_pii --quiet 2>/dev/null || true && \
     guardrails hub install hub://guardrails/secrets_present --quiet 2>/dev/null || true && \
+    pip install --no-cache-dir "pydantic>=2,<3" pydantic-core && \
     pip cache purge 2>/dev/null || true
 
 # Output directories and entrypoint

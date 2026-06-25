@@ -250,6 +250,7 @@ class BenchmarkRunner:
         backends: Optional[List[GuardrailBackend]] = None,
         dry_run: bool = False,
         output_dir: Optional[Path] = None,
+        progress_cb=None,
     ) -> BenchmarkArtifacts:
         """Run all probes against all backends and write artifacts."""
         out_dir = Path(output_dir) if output_dir else self._default_output
@@ -262,7 +263,7 @@ class BenchmarkRunner:
             year, month, [b.value for b in all_backends], dry_run,
         )
 
-        comparison = self._runner.compare_backends(backends=all_backends)
+        comparison = self._runner.compare_backends(backends=all_backends, progress_cb=progress_cb)
 
         backends_tested = [
             b.value for b in comparison.backends_tested

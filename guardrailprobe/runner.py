@@ -40,7 +40,7 @@ from __future__ import annotations
 import logging
 import os
 import time
-from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError as _FuturesTimeout
+from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError as _FuturesTimeout, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set
@@ -51,6 +51,7 @@ from guardrailprobe.adapters import REGISTRY
 from guardrailprobe.probes import AttackCategory, AttackProbe, ProbeLibrary
 
 _BACKEND_TIMEOUT_SECS = 120
+_PROBE_WORKERS = 3
 
 logger = logging.getLogger("RedTeamRunner")
 
@@ -75,7 +76,7 @@ BACKEND_SCOPE: Dict[str, Dict[str, Any]] = {
         "type": "general",
         "label": "Prompt Security",
     },
-    "custom_http": {
+    "ga_guard": {
         "type": "general",
         "label": "Content Safety",
     },
@@ -180,6 +181,7 @@ class RedTeamRunner:
         probes: Optional[List[AttackProbe]] = None,
         categories: Optional[List[AttackCategory]] = None,
         severity_filter: Optional[str] = None,
+        progress_cb=None,
     ) -> RedTeamReport:
         """Fire a filtered probe set against *backend* and return a report."""
         run_id = str(uuid4())
@@ -227,10 +229,13 @@ class RedTeamRunner:
             run_id, backend.value, len(active_probes),
         )
 
-        probe_results = [
-            self._run_one(probe, backend)
-            for probe in active_probes
-        ]
+        probe_results: List[ProbeResult] = []
+        with ThreadPoolExecutor(max_workers=_PROBE_WORKERS) as pool:
+            futures = {pool.submit(self._run_one, p, backend): p for p in active_probes}
+            for fut in as_completed(futures):
+                probe_results.append(fut.result())
+                if progress_cb:
+                    progress_cb(backend.value, len(probe_results), len(active_probes))
 
         report = _build_report(backend, run_id, timestamp, probe_results)
         self._reports[run_id] = report
@@ -247,6 +252,7 @@ class RedTeamRunner:
         backends: List[GuardrailBackend],
         probes: Optional[List[AttackProbe]] = None,
         categories: Optional[List[AttackCategory]] = None,
+        progress_cb=None,
     ) -> ComparisonReport:
         """Run the same probe set against every backend and compare results."""
         if not backends:
@@ -258,7 +264,9 @@ class RedTeamRunner:
         active_probes = probes or []
 
         def _run(backend: GuardrailBackend) -> RedTeamReport:
-            return self.run_against_backend(backend, probes=probes, categories=categories)
+            return self.run_against_backend(
+                backend, probes=probes, categories=categories, progress_cb=progress_cb
+            )
 
         reports: Dict[str, RedTeamReport] = {}
         with ThreadPoolExecutor(max_workers=len(backends)) as pool:
@@ -288,7 +296,7 @@ class RedTeamRunner:
             if v.total_probes > 0
             and v.coverage_pct >= MIN_COVERAGE_PCT
             and BACKEND_SCOPE.get(k, {}).get("type") == "general"
-            and not (k == "custom_http" and custom_http_no_url)
+            and not (k == "ga_guard" and custom_http_no_url)
         }
         ranked = eligible or {k: v for k, v in reports.items() if v.total_probes > 0} or reports
         best_overall = max(ranked, key=lambda k: ranked[k].pass_rate)

@@ -72,6 +72,19 @@ class AzurePromptShieldsAdapter:
                         status=AdapterStatus.NO_API_KEY,
                         status_message=f"Invalid credentials (HTTP {resp.status_code}).",
                     )
+                if resp.status_code == 400:
+                    detail = resp.text[:300] if resp.text else "no body"
+                    logger.warning(
+                        "Azure Prompt Shields 400 — probe content rejected: %s", detail
+                    )
+                    return ProbeResponse(
+                        action=ActionType.SKIPPED,
+                        latency_ms=round((time.perf_counter() - t0) * 1000, 2),
+                        raw_response={"error": "HTTP 400", "detail": detail},
+                        backend=self.backend_name,
+                        status=AdapterStatus.ERROR,
+                        status_message=f"HTTP 400: {detail}",
+                    )
                 resp.raise_for_status()
                 data = resp.json()
                 break

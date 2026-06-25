@@ -48,6 +48,12 @@ services:
       # ── GuardrailsAI hub token (optional — regex fallback always active) ───
       - GUARDRAILS_TOKEN=${GUARDRAILS_TOKEN:-}
 
+      # ── LlamaFirewall — HuggingFace token to download PromptGuard 2 ────────
+      # Accept license at huggingface.co/meta-llama/Llama-Prompt-Guard-2-86M first.
+      # Skipped if not set AND model not already cached in site-packages.
+      - HF_TOKEN=${HF_TOKEN:-}
+      - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN:-}
+
       # ── GA Guard ──────────────────────────────────────────────────────────
       - GA_GUARD_API_URL=${GA_GUARD_API_URL:-}            # required (must be https://)
       - GA_GUARD_API_KEY=${GA_GUARD_API_KEY:-}            # optional

@@ -12,9 +12,9 @@ guardrailprobe status    — show credential status for all adapters
 
 from __future__ import annotations
 
-import json
 import os
 import sys
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -83,20 +83,48 @@ def run(year, month, backends, output_dir, dry_run, no_pdf, json_only) -> None:
     else:
         click.echo("Backends: all configured")
 
-    try:
-        arts = runner.generate_monthly_benchmark(
-            year=year,
-            month=month,
-            backends=backend_list,
-            dry_run=dry_run,
-            output_dir=Path(output_dir),
-        )
-    except Exception as exc:
-        click.echo(f"\nBenchmark FAILED: {exc}", err=True)
-        if os.getenv("DEBUG"):
-            import traceback
-            traceback.print_exc()
-        sys.exit(1)
+    from rich.progress import (  # noqa: PLC0415
+        BarColumn, MofNCompleteColumn, Progress,
+        SpinnerColumn, TextColumn, TimeRemainingColumn,
+    )
+
+    _lock = threading.Lock()
+    _backend_progress: dict = {}
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[bold]{task.description}"),
+        BarColumn(bar_width=40),
+        MofNCompleteColumn(),
+        TextColumn("probes"),
+        TimeRemainingColumn(),
+        transient=True,
+    ) as progress:
+        task = progress.add_task("Benchmarking…", total=None)
+
+        def progress_cb(backend_val: str, done: int, total: int) -> None:
+            with _lock:
+                _backend_progress[backend_val] = (done, total)
+                total_done = sum(v[0] for v in _backend_progress.values())
+                total_all  = sum(v[1] for v in _backend_progress.values())
+            progress.update(task, completed=total_done, total=total_all or None,
+                            description=f"[bold]{backend_val}")
+
+        try:
+            arts = runner.generate_monthly_benchmark(
+                year=year,
+                month=month,
+                backends=backend_list,
+                dry_run=dry_run,
+                output_dir=Path(output_dir),
+                progress_cb=progress_cb,
+            )
+        except Exception as exc:
+            click.echo(f"\nBenchmark FAILED: {exc}", err=True)
+            if os.getenv("DEBUG"):
+                import traceback  # noqa: PLC0415
+                traceback.print_exc()
+            sys.exit(1)
 
     import calendar
     click.echo(f"\nBenchmark complete — {calendar.month_name[month]} {year}")

@@ -18,6 +18,10 @@ _BOTO3_SDK: bool = importlib.util.find_spec("boto3") is not None
 class AWSBedrockAdapter:
     backend_name = "aws_bedrock"
 
+    def __init__(self) -> None:
+        self._client: Any = None
+        self._client_creds_key: tuple = ()
+
     def _creds(self) -> Dict[str, str]:
         return {
             "region": os.getenv("AWS_DEFAULT_REGION", "").strip(),
@@ -59,15 +63,19 @@ class AWSBedrockAdapter:
         import boto3  # noqa: PLC0415
 
         c = self._creds()
-        t0 = time.perf_counter()
-        try:
-            client = boto3.client(
+        creds_key = (c["region"], c["access_key"], c["secret_key"])
+        if self._client is None or self._client_creds_key != creds_key:
+            self._client = boto3.client(
                 "bedrock-runtime",
                 region_name=c["region"] or None,
                 aws_access_key_id=c["access_key"] or None,
                 aws_secret_access_key=c["secret_key"] or None,
             )
-            response = client.apply_guardrail(
+            self._client_creds_key = creds_key
+
+        t0 = time.perf_counter()
+        try:
+            response = self._client.apply_guardrail(
                 guardrailIdentifier=c["guardrail_id"],
                 guardrailVersion=c["guardrail_version"] or "DRAFT",
                 source="INPUT",
