@@ -13,7 +13,7 @@ from guardrailprobe._types import ActionType, AdapterStatus, ProbeResponse
 
 logger = logging.getLogger(__name__)
 
-_API_VERSION = "2024-02-15-preview"
+_API_VERSION = "2024-09-01"
 
 
 class AzurePromptShieldsAdapter:

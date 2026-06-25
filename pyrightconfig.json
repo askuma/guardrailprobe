@@ -1,0 +1,8 @@
+{
+  "include": ["guardrailprobe", "tests"],
+  "exclude": ["src", "dist", "site-packages", "**/__pycache__"],
+  "pythonVersion": "3.12",
+  "typeCheckingMode": "basic",
+  "reportMissingImports": "none",
+  "reportMissingModuleSource": "none"
+}

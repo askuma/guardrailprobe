@@ -517,7 +517,7 @@ class BenchmarkRunner:
             fh.write(md)
         logger.info("MD    → %s", artifacts.markdown_path)
 
-        # PDF (best-effort)
+        # PDF — signed with auto-generated (or user-supplied) PKCS#12 key
         try:
             from guardrailprobe.signer import ReportSigner  # noqa: PLC0415
             signer = ReportSigner()
@@ -526,7 +526,7 @@ class BenchmarkRunner:
             artifacts.pdf_path = pdf_out
             logger.info("PDF   → %s", pdf_out)
         except Exception as exc:
-            logger.warning("PDF signing skipped: %s", exc)
+            logger.error("PDF signing failed: %s", exc, exc_info=True)
 
     # ── docs/latest_index.json ────────────────────────────────────────────────
 

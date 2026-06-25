@@ -142,16 +142,28 @@ class ReportSigner:
                 "Install it with: pip install 'guardrailprobe[pdf]'"
             )
         self._signer = None
-        p12_env = os.getenv("GUARDRAIL_SIGNING_KEY_P12", "guardrail_signing.p12")
-        self._p12_path = Path(p12_env)
         raw_pass = os.getenv("GUARDRAIL_SIGNING_KEY_PASS", "")
         self._passphrase = raw_pass.encode() if raw_pass else b""
         self._tsa_url = os.getenv("GUARDRAIL_TSA_URL", "http://timestamp.digicert.com")
+
+        # Use the configured P12 only if it already exists (it may live on a
+        # read-only mount).  Otherwise fall back to a writable auto-generated key
+        # in the reports directory so signing never silently fails.
+        configured = Path(os.getenv("GUARDRAIL_SIGNING_KEY_P12", ""))
+        if configured.name and configured.exists():
+            self._p12_path = configured
+        else:
+            self._p12_path = (
+                Path("/app/reports/guardrail_signing.p12")
+                if Path("/app").is_dir()
+                else Path("reports/guardrail_signing.p12")
+            )
 
     def _get_signer(self):
         if self._signer is not None:
             return self._signer
         if not self._p12_path.exists():
+            self._p12_path.parent.mkdir(parents=True, exist_ok=True)
             _generate_self_signed_p12(self._p12_path, self._passphrase)
         from pyhanko.sign import signers as _signers  # noqa: PLC0415
         self._signer = _signers.SimpleSigner.load_pkcs12(

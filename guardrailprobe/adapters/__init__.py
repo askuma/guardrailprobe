@@ -94,4 +94,8 @@ REGISTRY.register(AzurePromptShieldsAdapter())
 REGISTRY.register(AWSBedrockAdapter())
 REGISTRY.register(LlamaFirewallAdapter())
 REGISTRY.register(LLMGuardAdapter())
-REGISTRY.register(CustomHTTPAdapter())
+
+# GA Guard — registered under "ga_guard" (primary) and "custom_http" (legacy alias)
+_ga_guard_adapter = CustomHTTPAdapter()
+REGISTRY.register(_ga_guard_adapter)
+REGISTRY._adapters["custom_http"] = _ga_guard_adapter  # backwards-compat alias

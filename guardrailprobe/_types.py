@@ -38,7 +38,8 @@ class GuardrailBackend(str, Enum):
     AWS_BEDROCK = "aws_bedrock"
     LLAMA_FIREWALL = "llama_firewall"
     LLM_GUARD = "llm_guard"
-    CUSTOM_HTTP = "custom_http"
+    GA_GUARD = "ga_guard"
+    CUSTOM_HTTP = "custom_http"   # legacy alias — prefer GA_GUARD
 
 
 class AdapterStatus(str, Enum):

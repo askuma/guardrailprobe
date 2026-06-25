@@ -3,8 +3,8 @@
     "year": 2026,
     "month": 6,
     "month_name": "June",
-    "run_id": "aaf34a3a-b850-4085-b01a-4fbcd70983ee",
-    "generated_at": "2026-06-24T12:32:59.210978+00:00",
+    "run_id": "2ee4d9dd-af6c-4fa9-b786-16db01a4bce8",
+    "generated_at": "2026-06-25T09:40:50.115704+00:00",
     "backends_tested": [
       "nemo",
       "guardrails_ai",
@@ -13,37 +13,33 @@
       "openai_moderation",
       "azure_content_safety",
       "azure_prompt_shields",
-      "aws_bedrock",
-      "llama_firewall",
-      "llm_guard"
+      "aws_bedrock"
     ],
-    "best_overall": "nemo",
-    "best_overall_pass_rate": 85.9,
+    "best_overall": "lakera",
+    "best_overall_pass_rate": 83.3,
     "per_backend_rates": {
-      "nemo": 85.9,
+      "nemo": 0.0,
       "guardrails_ai": 2.6,
       "presidio": 6.4,
       "lakera": 83.3,
       "openai_moderation": 100.0,
       "azure_content_safety": 25.6,
-      "azure_prompt_shields": 24.4,
-      "aws_bedrock": 59.0,
-      "llama_firewall": 85.9,
-      "llm_guard": 85.9
+      "azure_prompt_shields": 85.9,
+      "aws_bedrock": 59.0
     },
-    "probe_count": 703,
+    "probe_count": 547,
     "backends_skipped": {},
     "json_url": "benchmarks/benchmark_2026_06.json",
     "markdown_url": "benchmarks/benchmark_2026_06.md",
-    "pdf_url": "benchmarks/benchmark_2026_06.pdf"
+    "pdf_url": null
   },
   "archive": [
     {
       "year": 2026,
       "month": 6,
       "month_name": "June",
-      "run_id": "aaf34a3a-b850-4085-b01a-4fbcd70983ee",
-      "generated_at": "2026-06-24T12:32:59.210978+00:00",
+      "run_id": "2ee4d9dd-af6c-4fa9-b786-16db01a4bce8",
+      "generated_at": "2026-06-25T09:40:50.115704+00:00",
       "backends_tested": [
         "nemo",
         "guardrails_ai",
@@ -52,29 +48,25 @@
         "openai_moderation",
         "azure_content_safety",
         "azure_prompt_shields",
-        "aws_bedrock",
-        "llama_firewall",
-        "llm_guard"
+        "aws_bedrock"
       ],
-      "best_overall": "nemo",
-      "best_overall_pass_rate": 85.9,
+      "best_overall": "lakera",
+      "best_overall_pass_rate": 83.3,
       "per_backend_rates": {
-        "nemo": 85.9,
+        "nemo": 0.0,
         "guardrails_ai": 2.6,
         "presidio": 6.4,
         "lakera": 83.3,
         "openai_moderation": 100.0,
         "azure_content_safety": 25.6,
-        "azure_prompt_shields": 24.4,
-        "aws_bedrock": 59.0,
-        "llama_firewall": 85.9,
-        "llm_guard": 85.9
+        "azure_prompt_shields": 85.9,
+        "aws_bedrock": 59.0
       },
-      "probe_count": 703,
+      "probe_count": 547,
       "backends_skipped": {},
       "json_url": "benchmarks/benchmark_2026_06.json",
       "markdown_url": "benchmarks/benchmark_2026_06.md",
-      "pdf_url": "benchmarks/benchmark_2026_06.pdf"
+      "pdf_url": null
     }
   ]
 }

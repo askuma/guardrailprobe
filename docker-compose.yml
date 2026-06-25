@@ -16,7 +16,8 @@ services:
     ports:
       - "8080:8080"            # Flask dashboard  →  http://localhost:8080
     env_file:
-      - .env                   # Copy .env.example → .env and fill in values
+      - path: .env             # Copy .env.example → .env and fill in values
+        required: false        # Container starts even without a .env file
     environment:
       # ── Lakera Guard ──────────────────────────────────────────────────────
       - LAKERA_GUARD_API_KEY=${LAKERA_GUARD_API_KEY:-}
@@ -28,16 +29,15 @@ services:
       - AZURE_CONTENT_SAFETY_KEY=${AZURE_CONTENT_SAFETY_KEY:-}
       - AZURE_CONTENT_SAFETY_ENDPOINT=${AZURE_CONTENT_SAFETY_ENDPOINT:-}
 
-      # ── Azure Prompt Shields ──────────────────────────────────────────────
-      - AZURE_PROMPT_SHIELDS_KEY=${AZURE_PROMPT_SHIELDS_KEY:-}
-      - AZURE_PROMPT_SHIELDS_ENDPOINT=${AZURE_PROMPT_SHIELDS_ENDPOINT:-}
+      # ── Azure Prompt Shields (shares credentials with azure_content_safety) ─
+      # No separate key needed — AZURE_CONTENT_SAFETY_KEY / ENDPOINT are reused.
 
       # ── AWS Bedrock Guardrails ─────────────────────────────────────────────
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
       - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
-      - AWS_GUARDRAIL_ID=${AWS_GUARDRAIL_ID:-}
-      - AWS_GUARDRAIL_VERSION=${AWS_GUARDRAIL_VERSION:-DRAFT}
+      - AWS_BEDROCK_GUARDRAIL_ID=${AWS_BEDROCK_GUARDRAIL_ID:-}
+      - AWS_BEDROCK_GUARDRAIL_VERSION=${AWS_BEDROCK_GUARDRAIL_VERSION:-DRAFT}
 
       # ── NeMo (requires an LLM key to evaluate guardrail rails) ────────────
       - NEMO_OPENAI_API_KEY=${NEMO_OPENAI_API_KEY:-}
@@ -48,8 +48,11 @@ services:
       # ── GuardrailsAI hub token (optional — regex fallback always active) ───
       - GUARDRAILS_TOKEN=${GUARDRAILS_TOKEN:-}
 
-      # ── Custom HTTP endpoint (GA Guard or any HTTPS guardrail API) ─────────
-      - GA_GUARD_API_URL=${GA_GUARD_API_URL:-}
+      # ── GA Guard ──────────────────────────────────────────────────────────
+      - GA_GUARD_API_URL=${GA_GUARD_API_URL:-}            # required (must be https://)
+      - GA_GUARD_API_KEY=${GA_GUARD_API_KEY:-}            # optional
+      - GA_GUARD_AUTH_HEADER=${GA_GUARD_AUTH_HEADER:-}    # optional (default: Authorization)
+      - GA_GUARD_AUTH_PREFIX=${GA_GUARD_AUTH_PREFIX:-}    # optional (default: Bearer)
 
       # ── PDF report signing ─────────────────────────────────────────────────
       - GUARDRAIL_SIGNING_KEY_P12=/app/certs/guardrail_signing.p12
@@ -58,7 +61,10 @@ services:
       - guardrailprobe_reports:/app/reports          # benchmark output (PDF, JSON, MD)
       - ./docs:/app/docs                             # committed benchmark artifacts
       - ./certs:/app/certs:ro                        # signing key (never commit the .p12)
-      - ./site-packages:/app/site-packages:ro        # llamafirewall / llm-guard (host-installed)
+      # LlamaFirewall / LLM Guard — install on host, then restart the container.
+      # If ./site-packages is empty, the entrypoint skips it gracefully.
+      #   pip install llamafirewall llm-guard --target ./site-packages
+      - ./site-packages:/app/site-packages:ro
 
     dns:
       - 8.8.8.8
