@@ -30,11 +30,15 @@ def _hf_token() -> str:
 
 
 def _model_cached() -> bool:
-    """Return True if the model snapshot is already on disk (no download needed)."""
+    """Return True only when model weights are present and usable."""
     try:
         from huggingface_hub import try_to_load_from_cache  # noqa: PLC0415
-        result = try_to_load_from_cache(_MODEL_ID, "config.json")
-        return result is not None
+        # config.json may exist even when the download was incomplete —
+        # verify that actual weight files are present.
+        for weight_file in ("model.safetensors", "pytorch_model.bin"):
+            if try_to_load_from_cache(_MODEL_ID, weight_file) is not None:
+                return True
+        return False
     except Exception:
         return False
 
@@ -95,14 +99,35 @@ class LlamaFirewallAdapter:
             result = self._scan(payload)
         except Exception as exc:
             latency = (time.perf_counter() - t0) * 1000
+            err_str = str(exc)
+            # Incomplete model download — weights missing or meta-tensor (no data)
+            if any(k in err_str for k in (
+                "no file named pytorch_model.bin",
+                "model.safetensors",
+                "meta tensor",
+                "to_empty",
+            )):
+                logger.warning(
+                    "LlamaFirewall: model weights incomplete or corrupt — "
+                    "re-run: rm -rf ~/.cache/huggingface/hub/models--meta-llama--Llama-Prompt-Guard-2-86M "
+                    "then restart the container with HF_TOKEN set."
+                )
+                return ProbeResponse(
+                    action=ActionType.SKIPPED,
+                    latency_ms=latency,
+                    raw_response={"error": err_str},
+                    backend=self.backend_name,
+                    status=AdapterStatus.NO_API_KEY,
+                    status_message="Model weights incomplete. Delete cache and re-download with HF_TOKEN.",
+                )
             logger.error("LlamaFirewall error: %s", exc)
             return ProbeResponse(
                 action=ActionType.BLOCK,
                 latency_ms=latency,
-                raw_response={"error": str(exc)},
+                raw_response={"error": err_str},
                 backend=self.backend_name,
                 status=AdapterStatus.ERROR,
-                status_message=str(exc),
+                status_message=err_str,
             )
 
         latency = (time.perf_counter() - t0) * 1000

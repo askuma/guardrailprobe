@@ -22,7 +22,7 @@ services:
       # ── Lakera Guard ──────────────────────────────────────────────────────
       - LAKERA_GUARD_API_KEY=${LAKERA_GUARD_API_KEY:-}
 
-      # ── OpenAI Moderation ─────────────────────────────────────────────────
+      # ── OpenAI Moderation + NeMo OpenAI provider ─────────────────────────
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
 
       # ── Azure Content Safety ──────────────────────────────────────────────
@@ -39,11 +39,23 @@ services:
       - AWS_BEDROCK_GUARDRAIL_ID=${AWS_BEDROCK_GUARDRAIL_ID:-}
       - AWS_BEDROCK_GUARDRAIL_VERSION=${AWS_BEDROCK_GUARDRAIL_VERSION:-DRAFT}
 
-      # ── NeMo (requires an LLM key to evaluate guardrail rails) ────────────
+      # ── NeMo LLM provider — first non-empty key wins (see .env.example) ──
+      # Without any key NeMo runs in colang pattern-matching mode (no API calls).
+      # OPENAI_API_KEY above is reused automatically. NEMO_OPENAI_API_KEY is an
+      # accepted alias (useful when OPENAI_API_KEY is reserved for another service).
       - NEMO_OPENAI_API_KEY=${NEMO_OPENAI_API_KEY:-}
       - NEMO_OPENAI_MODEL=${NEMO_OPENAI_MODEL:-gpt-4o-mini}
+      # OpenRouter — free-tier OpenAI-compatible gateway (recommended)
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
       - OPENROUTER_MODEL=${OPENROUTER_MODEL:-meta-llama/llama-3.1-8b-instruct:free}
+      # Azure OpenAI (alternative to OPENAI_API_KEY / OpenRouter)
+      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY:-}
+      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT:-}
+      - AZURE_OPENAI_DEPLOYMENT=${AZURE_OPENAI_DEPLOYMENT:-gpt-4o-mini}
+      - AZURE_OPENAI_API_VERSION=${AZURE_OPENAI_API_VERSION:-2024-02-15-preview}
+      # Ollama — local LLM, no API key required
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3}
 
       # ── GuardrailsAI hub token (optional — regex fallback always active) ───
       - GUARDRAILS_TOKEN=${GUARDRAILS_TOKEN:-}

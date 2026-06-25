@@ -3,88 +3,78 @@
     "year": 2026,
     "month": 6,
     "month_name": "June",
-    "run_id": "7cb895c9-2e2b-4def-ad4d-b88c5024400f",
-    "generated_at": "2026-06-25T15:01:59.538358+00:00",
+    "run_id": "20b24ec7-4528-4311-af0b-9b5acf279797",
+    "generated_at": "2026-06-25T17:56:20.515927+00:00",
     "backends_tested": [
       "nemo",
+      "lakera",
+      "azure_content_safety",
+      "aws_bedrock",
+      "llama_firewall",
+      "llm_guard",
       "guardrails_ai",
       "presidio",
-      "lakera",
       "openai_moderation",
-      "azure_content_safety",
-      "azure_prompt_shields",
-      "aws_bedrock",
-      "custom_http"
+      "azure_prompt_shields"
     ],
-    "best_overall": "lakera",
-    "best_overall_pass_rate": 83.3,
+    "best_overall": "nemo",
+    "best_overall_pass_rate": 85.9,
     "per_backend_rates": {
-      "nemo": 0.0,
-      "guardrails_ai": 2.6,
-      "presidio": 6.4,
+      "nemo": 85.9,
       "lakera": 83.3,
-      "openai_moderation": 100.0,
       "azure_content_safety": 25.6,
-      "azure_prompt_shields": 25.3,
       "aws_bedrock": 59.0,
       "llama_firewall": 0.0,
-      "llm_guard": 0.0,
-      "ga_guard": 0.0,
-      "custom_http": 85.9
+      "llm_guard": 35.9,
+      "guardrails_ai": 2.6,
+      "presidio": 6.4,
+      "openai_moderation": 100.0,
+      "azure_prompt_shields": 25.3
     },
     "probe_count": 624,
-    "backends_skipped": {
-      "llama_firewall": "MISSING_CREDENTIALS",
-      "llm_guard": "MISSING_CREDENTIALS",
-      "ga_guard": "MISSING_CREDENTIALS"
-    },
+    "backends_skipped": {},
     "json_url": "benchmarks/benchmark_2026_06.json",
     "markdown_url": "benchmarks/benchmark_2026_06.md",
-    "pdf_url": "benchmarks/benchmark_2026_06.pdf"
+    "pdf_url": null
   },
   "archive": [
     {
       "year": 2026,
       "month": 6,
       "month_name": "June",
-      "run_id": "7cb895c9-2e2b-4def-ad4d-b88c5024400f",
-      "generated_at": "2026-06-25T15:01:59.538358+00:00",
+      "run_id": "20b24ec7-4528-4311-af0b-9b5acf279797",
+      "generated_at": "2026-06-25T17:56:20.515927+00:00",
       "backends_tested": [
         "nemo",
+        "lakera",
+        "azure_content_safety",
+        "aws_bedrock",
+        "llama_firewall",
+        "llm_guard",
         "guardrails_ai",
         "presidio",
-        "lakera",
         "openai_moderation",
-        "azure_content_safety",
-        "azure_prompt_shields",
-        "aws_bedrock",
-        "custom_http"
+        "azure_prompt_shields"
       ],
-      "best_overall": "lakera",
-      "best_overall_pass_rate": 83.3,
+      "best_overall": "nemo",
+      "best_overall_pass_rate": 85.9,
       "per_backend_rates": {
-        "nemo": 0.0,
-        "guardrails_ai": 2.6,
-        "presidio": 6.4,
+        "nemo": 85.9,
         "lakera": 83.3,
-        "openai_moderation": 100.0,
         "azure_content_safety": 25.6,
-        "azure_prompt_shields": 25.3,
         "aws_bedrock": 59.0,
         "llama_firewall": 0.0,
-        "llm_guard": 0.0,
-        "ga_guard": 0.0,
-        "custom_http": 85.9
+        "llm_guard": 35.9,
+        "guardrails_ai": 2.6,
+        "presidio": 6.4,
+        "openai_moderation": 100.0,
+        "azure_prompt_shields": 25.3
       },
       "probe_count": 624,
-      "backends_skipped": {
-        "llama_firewall": "MISSING_CREDENTIALS",
-        "llm_guard": "MISSING_CREDENTIALS",
-        "ga_guard": "MISSING_CREDENTIALS"
-      },
+      "backends_skipped": {},
       "json_url": "benchmarks/benchmark_2026_06.json",
       "markdown_url": "benchmarks/benchmark_2026_06.md",
-      "pdf_url": "benchmarks/benchmark_2026_06.pdf"
+      "pdf_url": null
     }
   ]
 }

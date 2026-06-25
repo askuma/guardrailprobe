@@ -2,18 +2,21 @@
 guardrailprobe.adapters.nemo — NVIDIA NeMo Guardrails adapter.
 
 When the nemoguardrails SDK is installed, real NeMo rails run via
-LLMRails.generate_async.  LLM provider is auto-detected from env vars:
+LLMRails.generate_async.  Without an LLM provider, colang pattern
+matching runs automatically — no API key required for basic operation.
+LLM provider is auto-detected from env vars (first match wins):
 
-  OPENAI_API_KEY            → openai   (gpt-3.5-turbo)
-  OPENROUTER_API_KEY        → openai   (via openrouter.ai)
+  OPENAI_API_KEY / NEMO_OPENAI_API_KEY  → openai  (gpt-4o-mini)
+  OPENROUTER_API_KEY                    → openai  (via openrouter.ai)
   AZURE_OPENAI_API_KEY +
-    AZURE_OPENAI_ENDPOINT   → azure    (gpt-4o-mini)
-  ANTHROPIC_API_KEY         → anthropic via LangChain
-  OLLAMA_BASE_URL           → ollama   (llama3, no key needed)
+    AZURE_OPENAI_ENDPOINT               → azure   (gpt-4o-mini)
+  ANTHROPIC_API_KEY                     → anthropic via LangChain
+  OLLAMA_BASE_URL                       → ollama  (llama3, no key needed)
 
-check_credentials() returns True only when the SDK is installed AND at
-least one LLM provider is detected.  Without an LLM backend the provider
-returns AdapterStatus.NO_LLM_BACKEND.
+check_credentials() returns True whenever the SDK is installed —
+colang pattern-matching works without any LLM key and catches the
+majority of OWASP LLM01/LLM06 attack probes.  With an LLM key, intent
+classification also handles novel variants not matching literal patterns.
 
 Requires: pip install 'guardrailprobe[nemo]'
 """
@@ -138,6 +141,7 @@ def _ollama_reachable() -> bool:
 def _has_llm_provider() -> bool:
     return bool(
         os.getenv("OPENAI_API_KEY", "").strip()
+        or os.getenv("NEMO_OPENAI_API_KEY", "").strip()
         or os.getenv("OPENROUTER_API_KEY", "").strip()
         or (os.getenv("AZURE_OPENAI_API_KEY", "").strip()
             and os.getenv("AZURE_OPENAI_ENDPOINT", "").strip())
@@ -155,15 +159,13 @@ class NemoAdapter:
         self._rails_lock = threading.Lock()
 
     def check_credentials(self) -> bool:
-        if not _NEMO_SDK:
-            return False
-        return _has_llm_provider()
+        # Mirrors monorepo NemoGuardrailsBackend._check_credentials():
+        # the SDK is sufficient — colang pattern matching works without an LLM.
+        return _NEMO_SDK
 
     def credential_status(self) -> AdapterStatus:
         if not _NEMO_SDK:
             return AdapterStatus.NO_API_KEY
-        if not _has_llm_provider():
-            return AdapterStatus.NO_LLM_BACKEND
         return AdapterStatus.RAN
 
     def missing_credential_message(self) -> str:
@@ -172,12 +174,7 @@ class NemoAdapter:
                 "NeMo Guardrails SDK not installed. "
                 "Run: pip install 'guardrailprobe[nemo]'"
             )
-        return (
-            "No LLM backend configured for NeMo. Set one of: "
-            "OPENAI_API_KEY, OPENROUTER_API_KEY, ANTHROPIC_API_KEY, "
-            "AZURE_OPENAI_API_KEY + AZURE_OPENAI_ENDPOINT, "
-            "or OLLAMA_BASE_URL (with Ollama running)."
-        )
+        return ""
 
     def _get_nemo_yaml(self) -> str:
         """Return full NeMo YAML config for the best available LLM provider.
@@ -193,13 +190,23 @@ class NemoAdapter:
         """
         rails = _NEMO_RAILS_BLOCK
 
-        if os.getenv("OPENAI_API_KEY", "").strip():
+        # NEMO_OPENAI_API_KEY is the docker-compose-style env var; fall back
+        # to OPENAI_API_KEY when that's set instead (or both).
+        openai_key = (
+            os.getenv("OPENAI_API_KEY", "").strip()
+            or os.getenv("NEMO_OPENAI_API_KEY", "").strip()
+        )
+        if openai_key:
             model = os.getenv("NEMO_OPENAI_MODEL", "gpt-4o-mini").strip()
+            # Always pass the key explicitly via parameters so NEMO_OPENAI_API_KEY
+            # works even when OPENAI_API_KEY is not set in the environment.
             return f"""
 models:
   - type: main
     engine: openai
     model: {model}
+    parameters:
+      openai_api_key: {openai_key}
 {rails}"""
 
         or_key   = os.getenv("OPENROUTER_API_KEY", "").strip()
@@ -268,14 +275,13 @@ models:
         return self._rails
 
     def run_probe(self, payload: str) -> ProbeResponse:
-        status = self.credential_status()
-        if status != AdapterStatus.RAN:
+        if not _NEMO_SDK:
             return ProbeResponse(
                 action=ActionType.SKIPPED,
                 latency_ms=0.0,
                 raw_response={"skipped": True},
                 backend=self.backend_name,
-                status=status,
+                status=AdapterStatus.NO_API_KEY,
                 status_message=self.missing_credential_message(),
             )
 
@@ -326,7 +332,5 @@ models:
         if not _NEMO_SDK:
             return {"status": "skipped", "backend": self.backend_name,
                     "reason": self.missing_credential_message()}
-        if not _has_llm_provider():
-            return {"status": "skipped", "backend": self.backend_name,
-                    "reason": self.missing_credential_message()}
-        return {"status": "ok", "backend": self.backend_name}
+        mode = "llm_enhanced" if _has_llm_provider() else "pattern_only"
+        return {"status": "ok", "backend": self.backend_name, "mode": mode}

@@ -21,14 +21,11 @@ from __future__ import annotations
 import calendar
 import json
 import logging
-import traceback
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor
-from concurrent.futures import TimeoutError as _FuturesTimeout
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from guardrailprobe._types import GuardrailBackend
 from guardrailprobe.probes import ProbeLibrary
@@ -527,7 +524,16 @@ class BenchmarkRunner:
             artifacts.pdf_path = pdf_out
             logger.info("PDF   → %s", pdf_out)
         except Exception as exc:
-            logger.error("PDF signing failed: %s", exc, exc_info=True)
+            if "mldsa" in str(exc) or "ImportError" in type(exc).__name__:
+                logger.warning(
+                    "PDF signing skipped — cryptography version conflict in site-packages. "
+                    "Re-install with: pip install llamafirewall llm-guard "
+                    "--target ./site-packages --ignore-installed --no-deps "
+                    "(then manually install only missing transitive deps). "
+                    "JSON and Markdown reports are unaffected."
+                )
+            else:
+                logger.warning("PDF signing failed (non-critical): %s", exc)
 
     # ── docs/latest_index.json ────────────────────────────────────────────────
 
