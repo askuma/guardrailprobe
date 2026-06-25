@@ -72,7 +72,7 @@ GUARDRAILPROBE_SKIP_SPACY=1 pip install guardrailprobe
 ## Quick start
 
 ```bash
-# 1. Set up credentials
+# 1. Set up credentials — interactive wizard (or copy .env.example to .env and edit manually)
 guardrailprobe init
 
 # 2. Check which backends are ready
@@ -270,23 +270,43 @@ Set `GUARDRAIL_SIGNING_KEY_P12` to the path of your P12 file.
 
 ## Configuration
 
-Copy `.env.example` to `.env` and fill in credentials for the backends you want to test:
+Choose either approach — both produce the same `.env` file.
+
+### Option A — Interactive wizard (recommended)
+
+```bash
+guardrailprobe init
+```
+
+Walks through each backend and prompts for keys. Press **Enter** to skip any adapter you don't have credentials for. Writes only what you enter to `.env`.
+
+### Option B — Edit manually
 
 ```bash
 cp .env.example .env
+# Open .env and fill in the keys for the backends you want to test
 ```
 
-Key variables:
+---
+
+### Key variables
 
 | Variable | Backend |
 |---|---|
 | `LAKERA_GUARD_API_KEY` | Lakera Guard |
 | `OPENAI_API_KEY` | OpenAI Moderation (also used by NeMo) |
-| `AZURE_CONTENT_SAFETY_KEY` + `AZURE_CONTENT_SAFETY_ENDPOINT` | Azure Content Safety **and** Azure Prompt Shields |
+| `AZURE_CONTENT_SAFETY_ENDPOINT` + `AZURE_CONTENT_SAFETY_KEY` | Azure Content Safety **and** Azure Prompt Shields |
 | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` | AWS Bedrock (or use an IAM role / `aws configure`) |
 | `AWS_BEDROCK_GUARDRAIL_ID` + `AWS_DEFAULT_REGION` | AWS Bedrock — guardrail ID and region |
-| `GA_GUARD_API_URL` | Custom HTTPS endpoint |
+| `GA_GUARD_API_URL` | GA Guard / any HTTPS guardrail endpoint |
+| `GA_GUARD_API_KEY` | GA Guard — optional API key |
 | `GUARDRAIL_SIGNING_KEY_P12` | PDF signing certificate path |
+
+After either option, verify which backends are ready:
+
+```bash
+guardrailprobe status
+```
 
 ---
 
