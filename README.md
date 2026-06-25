@@ -112,21 +112,21 @@ The `.env` file is optional. Any variables already exported in your shell are pa
 
 ### Adapter status in Docker
 
-The Docker image bundles the SDKs for most adapters. Here is the out-of-the-box status and what you need to enable each one:
+Here is the out-of-the-box status for each adapter and what you need to enable it:
 
-| Adapter | SDK bundled | What you need |
+| Adapter | Dependencies | What you need |
 |---|---|---|
-| `guardrails_ai` | Yes | Nothing — works without credentials (regex fallback) |
-| `presidio` | Yes | Nothing — runs locally |
-| `nemo` | Yes | One LLM key: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, or `AZURE_OPENAI_API_KEY` |
-| `aws_bedrock` | Yes (`boto3`) | `AWS_BEDROCK_GUARDRAIL_ID`, `AWS_DEFAULT_REGION`, AWS credentials |
-| `lakera` | Yes | `LAKERA_GUARD_API_KEY` |
-| `openai_moderation` | Yes | `OPENAI_API_KEY` |
-| `azure_content_safety` | Yes | `AZURE_CONTENT_SAFETY_KEY` + `AZURE_CONTENT_SAFETY_ENDPOINT` |
-| `azure_prompt_shields` | Yes | Same as `azure_content_safety` |
-| `ga_guard` | Yes | `GA_GUARD_API_URL` (must be `https://`) |
-| `llama_firewall` | No — volume-mounted | See below |
-| `llm_guard` | No — volume-mounted | See below |
+| `guardrails_ai` | None (regex fallback built-in) | Nothing — works without credentials |
+| `presidio` | spaCy model (bundled in image) | Nothing — runs locally |
+| `nemo` | `nemoguardrails` SDK (bundled) | One LLM key: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, or `AZURE_OPENAI_API_KEY` |
+| `aws_bedrock` | `boto3` SDK (bundled) | `AWS_BEDROCK_GUARDRAIL_ID`, `AWS_DEFAULT_REGION`, AWS credentials |
+| `lakera` | None — direct REST via `httpx` | `LAKERA_GUARD_API_KEY` |
+| `openai_moderation` | None — direct REST via `httpx` | `OPENAI_API_KEY` |
+| `azure_content_safety` | None — direct REST via `httpx` | `AZURE_CONTENT_SAFETY_KEY` + `AZURE_CONTENT_SAFETY_ENDPOINT` |
+| `azure_prompt_shields` | None — direct REST via `httpx` | Same as `azure_content_safety` — no separate key |
+| `ga_guard` | None — direct REST via `httpx` | `GA_GUARD_API_URL` (must be `https://`) |
+| `llama_firewall` | Volume-mounted (not in image) | See below |
+| `llm_guard` | Volume-mounted (not in image) | See below |
 
 ### LlamaFirewall (Meta PromptGuard 2)
 
