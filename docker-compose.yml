@@ -67,10 +67,13 @@ services:
       - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN:-}
 
       # ── GA Guard ──────────────────────────────────────────────────────────
-      - GA_GUARD_API_URL=${GA_GUARD_API_URL:-}            # required (must be https://)
-      - GA_GUARD_API_KEY=${GA_GUARD_API_KEY:-}            # optional
-      - GA_GUARD_AUTH_HEADER=${GA_GUARD_AUTH_HEADER:-}    # optional (default: Authorization)
-      - GA_GUARD_AUTH_PREFIX=${GA_GUARD_AUTH_PREFIX:-}    # optional (default: Bearer)
+      - GA_GUARD_API_URL=${GA_GUARD_API_URL:-}                        # required (must be https://)
+      - GA_GUARD_API_KEY=${GA_GUARD_API_KEY:-}                        # optional
+      - GA_GUARD_AUTH_HEADER=${GA_GUARD_AUTH_HEADER:-Authorization}   # optional (default: Authorization)
+      - GA_GUARD_AUTH_PREFIX=${GA_GUARD_AUTH_PREFIX:-Bearer}          # optional (default: Bearer)
+      - GA_GUARD_TEXT_FIELD=${GA_GUARD_TEXT_FIELD:-text}              # optional (default: text)
+      - GA_GUARD_CONTEXT_FIELD=${GA_GUARD_CONTEXT_FIELD:-context}     # optional (default: context)
+      - GA_GUARD_TIMEOUT_SECS=${GA_GUARD_TIMEOUT_SECS:-10}            # optional (default: 10)
 
       # ── PDF report signing ─────────────────────────────────────────────────
       - GUARDRAIL_SIGNING_KEY_P12=/app/certs/guardrail_signing.p12

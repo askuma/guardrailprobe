@@ -203,6 +203,46 @@ _INDEX_HTML = """<!DOCTYPE html>
     code { background: var(--border); padding: 1px 5px; border-radius: 3px;
            font-size: 0.78rem; font-family: monospace; }
     details summary { cursor: pointer; font-size: 0.75rem; color: var(--muted); margin-top: 8px; }
+
+    /* ── Comparison table ───────────────────────────────────────────────── */
+    .cmp-wrap { overflow-x: auto; margin-top: 12px; }
+    .cmp-table { width: 100%; border-collapse: collapse; font-size: 0.72rem; }
+    .cmp-table th { padding: 5px 7px; text-align: center; color: var(--muted); font-weight: 600;
+                    text-transform: uppercase; font-size: 0.6rem; letter-spacing: 0.06em;
+                    border-bottom: 1px solid var(--border); white-space: nowrap; }
+    .cmp-table th:first-child { text-align: left; padding-left: 0; }
+    .cmp-table td { padding: 7px 7px; text-align: center; border-bottom: 1px solid var(--border); }
+    .cmp-table td:first-child { text-align: left; white-space: nowrap; padding-left: 0; }
+    .cmp-table tr:last-child td { border-bottom: none; }
+    .cmp-hdr { background: rgba(255,255,255,0.03); padding: 4px 0 4px 0; font-size: 0.6rem;
+               font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+               color: var(--muted); border-bottom: 1px solid var(--border); }
+    .cmp-hdr td { color: var(--muted); font-weight: 700; }
+    .cmp-winner { font-weight: 700; }
+    .cmp-winner::after { content: ' ★'; color: var(--amber); }
+    .cmp-best-badge  { display: inline-block; font-size: 0.6rem; padding: 1px 5px; border-radius: 99px;
+                       background: rgba(16,185,129,0.15); color: var(--green); margin-left: 5px; vertical-align: middle; }
+    .cmp-spec-badge  { display: inline-block; font-size: 0.6rem; padding: 1px 5px; border-radius: 99px;
+                       background: rgba(167,139,250,0.15); color: #a78bfa; margin-left: 5px; vertical-align: middle; }
+    .cmp-note { margin-top: 10px; padding: 8px 10px; background: rgba(255,255,255,0.03);
+                border-radius: 5px; font-size: 0.68rem; color: var(--muted); line-height: 1.7; }
+
+    /* ── Benchmark loading overlay ──────────────────────────────────────── */
+    #bench-overlay { position: fixed; inset: 0; z-index: 999;
+                     background: rgba(10,12,20,0.92); backdrop-filter: blur(4px);
+                     display: none; flex-direction: column;
+                     align-items: center; justify-content: center; }
+    .ov-bk-rows  { display: flex; flex-direction: column; gap: 8px;
+                   width: 480px; max-width: 90vw; }
+    .ov-bk-row   { display: flex; align-items: center; gap: 10px; }
+    .ov-bk-name  { width: 168px; font-size: 0.7rem; font-family: monospace;
+                   flex-shrink: 0; color: rgba(255,255,255,0.75); }
+    .ov-bk-track { flex: 1; height: 4px; background: rgba(255,255,255,0.08);
+                   border-radius: 4px; position: relative; overflow: hidden; }
+    .ov-bk-dot   { position: absolute; top: 0; width: 10px; height: 4px; border-radius: 4px; }
+    .ov-bk-st    { width: 52px; font-size: 0.65rem; text-align: right; flex-shrink: 0; }
+    @keyframes ov-scan  { 0%,100%{left:0} 50%{left:calc(100% - 10px)} }
+    @keyframes ov-pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
   </style>
 </head>
 <body>
@@ -390,7 +430,7 @@ _INDEX_HTML = """<!DOCTYPE html>
         <div id="bench-downloads" class="row-gap" style="display:none;margin-top:4px"></div>
       </div>
 
-      <!-- Latest benchmark -->
+      <!-- Latest benchmark summary -->
       <div class="card">
         <div class="card-title">Latest Benchmark</div>
         <div id="latest-summary" class="result-box">Loading…</div>
@@ -400,6 +440,37 @@ _INDEX_HTML = """<!DOCTYPE html>
         </div>
       </div>
 
+    </div>
+  </div>
+
+  <!-- ── 4. Comparison Table (appears after first benchmark load) ────────── -->
+  <div class="section" id="comparison-section" style="display:none">
+    <div class="section-label">Comparison Table</div>
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <div class="card-title" style="margin-bottom:0">Per-backend / Per-OWASP Breakdown</div>
+        <span id="cmp-run-id" style="font-family:monospace;font-size:0.68rem;color:var(--muted)"></span>
+      </div>
+      <div class="cmp-wrap">
+        <table class="cmp-table" id="cmp-table">
+          <thead>
+            <tr>
+              <th style="text-align:left">Backend</th>
+              <th>Overall</th>
+              <th>LLM01</th><th>LLM02</th><th>LLM03</th><th>LLM04</th><th>LLM05</th>
+              <th>LLM06</th><th>LLM07</th><th>LLM08</th><th>LLM09</th><th>LLM10</th>
+              <th style="text-align:right">Avg ms</th>
+            </tr>
+          </thead>
+          <tbody id="cmp-body"></tbody>
+        </table>
+      </div>
+      <div class="cmp-note">
+        <strong style="color:var(--text)">Notes</strong><br>
+        — in a category cell means no probes ran for that category.<br>
+        ★ marks the category winner (highest pass rate for that OWASP category).<br>
+        <span style="color:#a78bfa">Specialized</span> tools are purpose-built for a specific use case (PII, content moderation, injection detection) and are not directly comparable to general-purpose guardrails on overall pass rate.
+      </div>
     </div>
   </div>
 
@@ -424,6 +495,35 @@ _INDEX_HTML = """<!DOCTYPE html>
                skipped:'gray', error:'red'};
     return pill(a.toUpperCase(), m[a] || 'gray');
   }
+
+  // ── OWASP category list (mirrors monorepo RT_OWASP) ──────────────────────────
+  const OWASP_CATS = [
+    {ref:'LLM01',label:'Prompt Injection'},
+    {ref:'LLM02',label:'Insecure Output'},
+    {ref:'LLM03',label:'Training Data Poisoning'},
+    {ref:'LLM04',label:'Model DoS'},
+    {ref:'LLM05',label:'Supply Chain'},
+    {ref:'LLM06',label:'Sensitive Info Disclosure'},
+    {ref:'LLM07',label:'Insecure Plugin'},
+    {ref:'LLM08',label:'Excessive Agency'},
+    {ref:'LLM09',label:'Overreliance'},
+    {ref:'LLM10',label:'Model Theft'},
+  ];
+
+  // ── Backend metadata for overlay animation and comparison table ──────────────
+  const BK_META = {
+    nemo:                 {label:'NeMo Guardrails',      color:'#22d3ee', eta:18,  dur:1.7, type:'general'},
+    guardrails_ai:        {label:'GuardrailsAI',          color:'#a78bfa', eta:28,  dur:2.1, type:'specialized'},
+    presidio:             {label:'Presidio',              color:'#fb923c', eta:12,  dur:1.9, type:'specialized'},
+    lakera:               {label:'Lakera Guard',          color:'#4ade80', eta:35,  dur:2.3, type:'general'},
+    openai_moderation:    {label:'OpenAI Moderation',     color:'#60a5fa', eta:45,  dur:2.0, type:'specialized'},
+    azure_content_safety: {label:'Azure Content Safety',  color:'#34d399', eta:55,  dur:1.8, type:'general'},
+    azure_prompt_shields: {label:'Azure Prompt Shields',  color:'#fbbf24', eta:62,  dur:2.4, type:'specialized'},
+    aws_bedrock:          {label:'AWS Bedrock',           color:'#f87171', eta:72,  dur:1.5, type:'general'},
+    llama_firewall:       {label:'LlamaFirewall',         color:'#fb923c', eta:85,  dur:2.2, type:'general'},
+    llm_guard:            {label:'LLM Guard',             color:'#06b6d4', eta:98,  dur:2.0, type:'general'},
+    ga_guard:             {label:'GA Guard',              color:'#94a3b8', eta:50,  dur:2.0, type:'custom'},
+  };
 
   // ── Backend grouping (mirrors runner.py BACKEND_SCOPE) ──────────────────────
   const BACKEND_GROUPS = {
@@ -595,12 +695,71 @@ _INDEX_HTML = """<!DOCTYPE html>
         ).join('');
   }
 
+  // ── Benchmark overlay ────────────────────────────────────────────────────────
+  let _ovTimerInterval = null;
+
+  function showOverlay(selectedBackends) {
+    const bkList = selectedBackends.length
+      ? selectedBackends.map(b => ({name: b, ...(BK_META[b] || {label: b, color: '#94a3b8', eta: 50, dur: 2.0})}))
+      : Object.entries(BK_META).filter(([,m]) => m.type !== 'custom').map(([n, m]) => ({name: n, ...m}));
+
+    $('ov-nbackends').textContent = bkList.length;
+    $('ov-bk-rows').innerHTML = bkList.map((b, i) => `
+      <div class="ov-bk-row" id="ovr-${i}">
+        <div class="ov-bk-name">${b.label || b.name}</div>
+        <div class="ov-bk-track">
+          <div class="ov-bk-dot" id="ovd-${i}"
+               style="background:${b.color};box-shadow:0 0 8px 2px ${b.color};
+                      animation:ov-scan ${b.dur || 2}s ease-in-out infinite;
+                      animation-delay:${(i * 0.18).toFixed(2)}s"></div>
+        </div>
+        <div class="ov-bk-st" id="ovs-${i}"
+             style="color:${b.color};animation:ov-pulse ${b.dur || 2}s ease-in-out infinite;
+                    animation-delay:${(i * 0.18).toFixed(2)}s">scanning</div>
+      </div>`).join('');
+
+    let elapsed = 0;
+    _ovTimerInterval = setInterval(() => {
+      elapsed++;
+      const mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
+      const ss = String(elapsed % 60).padStart(2, '0');
+      $('ov-timer').textContent = `${mm}:${ss}`;
+
+      const TOTAL_EST = 115;
+      const progressPct = Math.min(Math.round((elapsed / TOTAL_EST) * 100), 99);
+      $('ov-bar').style.width = progressPct + '%';
+      $('ov-pct').textContent = progressPct + '%';
+      const done = bkList.filter((b, _i) => elapsed >= (b.eta || 50)).length;
+      $('ov-done-text').textContent = `${done} / ${bkList.length} backends complete`;
+
+      bkList.forEach((b, i) => {
+        if (elapsed >= (b.eta || 50)) {
+          const dot = $('ovd-' + i);
+          const st  = $('ovs-' + i);
+          if (dot) { dot.style.animation = 'none'; dot.style.left = '0'; dot.style.width = '100%'; dot.style.background = (b.color || '#94a3b8') + '55'; dot.style.boxShadow = 'none'; }
+          if (st)  { st.style.animation = 'none'; st.style.color = 'rgba(255,255,255,0.3)'; st.textContent = 'done'; }
+        }
+      });
+    }, 1000);
+
+    $('bench-overlay').style.display = 'flex';
+  }
+
+  function hideOverlay() {
+    if (_ovTimerInterval) { clearInterval(_ovTimerInterval); _ovTimerInterval = null; }
+    $('bench-overlay').style.display = 'none';
+    $('ov-timer').textContent = '00:00';
+    $('ov-bar').style.width   = '0%';
+    $('ov-pct').textContent   = '0%';
+  }
+
   // ── Full benchmark ───────────────────────────────────────────────────────────
   async function runBenchmark() {
     const year  = parseInt($('bench-year').value)  || new Date().getFullYear();
     const month = parseInt($('bench-month').value) || (new Date().getMonth() + 1);
-    const backends = [...document.querySelectorAll('#bench-chips .chip.active')]
-                     .map(c => c.dataset.backend).join(',') || null;
+    const selectedBackends = [...document.querySelectorAll('#bench-chips .chip.active')]
+                             .map(c => c.dataset.backend);
+    const backends = selectedBackends.join(',') || null;
 
     const box      = $('bench-result');
     const prog     = $('bench-progress');
@@ -610,10 +769,10 @@ _INDEX_HTML = """<!DOCTYPE html>
 
     box.style.display  = 'none';
     $('bench-downloads').style.display = 'none';
-    prog.style.display = 'block';
-    fill.style.width   = '0%';
-    progText.textContent = 'Starting…';
+    prog.style.display = 'none';
     btn.disabled = true;
+
+    showOverlay(selectedBackends);
 
     let runId = null;
     try {
@@ -623,17 +782,17 @@ _INDEX_HTML = """<!DOCTYPE html>
       });
       const data = await res.json();
       if (data.error) {
-        prog.style.display = 'none';
-        box.style.display  = 'block';
-        box.textContent    = 'Error: ' + data.error;
+        hideOverlay();
+        box.style.display = 'block';
+        box.textContent   = 'Error: ' + data.error;
         btn.disabled = false;
         return;
       }
       runId = data.run_id;
     } catch(e) {
-      prog.style.display = 'none';
-      box.style.display  = 'block';
-      box.textContent    = 'Error: ' + e.message;
+      hideOverlay();
+      box.style.display = 'block';
+      box.textContent   = 'Error: ' + e.message;
       btn.disabled = false;
       return;
     }
@@ -651,11 +810,10 @@ _INDEX_HTML = """<!DOCTYPE html>
       const done  = status.done || 0;
       const total = status.total || 0;
       fill.style.width     = pct + '%';
-      progText.textContent = total > 0
-        ? `${done} / ${total} probes  (${pct}%)` : 'Running…';
+      progText.textContent = total > 0 ? `${done} / ${total} probes  (${pct}%)` : 'Running…';
 
       if (status.status === 'complete') {
-        prog.style.display = 'none';
+        hideOverlay();
         const r = status.result || {};
         let t  = '✓ Benchmark complete\\n';
         t += `Run ID:   ${r.run_id || runId}\\n`;
@@ -671,9 +829,9 @@ _INDEX_HTML = """<!DOCTYPE html>
         break;
       }
       if (status.status === 'error') {
-        prog.style.display = 'none';
-        box.style.display  = 'block';
-        box.textContent    = 'Error: ' + (status.error || 'Unknown error');
+        hideOverlay();
+        box.style.display = 'block';
+        box.textContent   = 'Error: ' + (status.error || 'Unknown error');
         break;
       }
     }
@@ -681,6 +839,79 @@ _INDEX_HTML = """<!DOCTYPE html>
   }
 
   // ── Latest benchmark ─────────────────────────────────────────────────────────
+  function passColor(rate) {
+    if (rate >= 0.8) return 'var(--green)';
+    if (rate >= 0.5) return 'var(--amber)';
+    return 'var(--red)';
+  }
+
+  function renderComparisonTable(results) {
+    const sums    = results.backend_summaries || {};
+    const winners = results.category_winners  || {};
+    const best    = results.best_overall;
+    const TOTAL   = 78;
+
+    const GENERAL     = ['nemo','lakera','ga_guard','azure_content_safety','aws_bedrock','llama_firewall','llm_guard'];
+    const SPECIALIZED = ['guardrails_ai','presidio','openai_moderation','azure_prompt_shields'];
+
+    const backendsInData = Object.keys(sums);
+    const generalSorted     = GENERAL    .filter(b => backendsInData.includes(b));
+    const specializedSorted = SPECIALIZED.filter(b => backendsInData.includes(b));
+    const otherSorted       = backendsInData.filter(b => !GENERAL.includes(b) && !SPECIALIZED.includes(b));
+    const all = [...generalSorted, ...specializedSorted, ...otherSorted];
+
+    function renderGroup(label, group) {
+      if (!group.length) return '';
+      const hdrColor = GENERAL.some(b => group.includes(b)) ? '#60a5fa' : '#a78bfa';
+      let html = `<tr class="cmp-hdr"><td colspan="${OWASP_CATS.length + 3}" style="color:${hdrColor}">${label}</td></tr>`;
+      for (const b of group) {
+        const s    = sums[b] || {};
+        const rate = s.pass_rate ?? 0;
+        const ran  = s.total_probes ?? 0;
+        const lat  = s.average_latency_ms;
+        const isBest = b === best;
+        const isSpec = SPECIALIZED.includes(b);
+        const lowCov = ran > 0 && (ran / TOTAL) < 0.5;
+        const bLabel = (BK_META[b] || {}).label || b.replace(/_/g,' ');
+
+        let nameCells = `<span style="color:${isBest ? 'var(--green)' : 'var(--text)'}; font-weight:${isBest ? 700 : 400}">${bLabel}</span>`;
+        if (isBest) nameCells += '<span class="cmp-best-badge">Best</span>';
+        if (isSpec)  nameCells += '<span class="cmp-spec-badge">Specialized</span>';
+
+        const overallColor = ran === 0 ? 'var(--muted)' : passColor(rate);
+        const overallCell = ran === 0
+          ? `<span style="color:var(--muted)">—</span>`
+          : `<div style="font-weight:700;font-size:0.82rem;color:${overallColor}">${(rate*100).toFixed(0)}%</div>
+             <div style="font-size:0.62rem;color:${lowCov ? 'var(--amber)' : 'var(--muted)'}">${ran}/${TOTAL}${lowCov ? ' ⚠' : ''}</div>`;
+
+        const catCells = OWASP_CATS.map(({ref}) => {
+          const cr = (s.results_by_category || {})[ref];
+          if (!cr && cr !== 0) return `<td><span style="color:var(--border)">—</span></td>`;
+          const catRate = typeof cr === 'object' ? (cr.pass_rate ?? cr) : cr;
+          const isWinner = winners[ref]?.winner === b;
+          return `<td><span style="color:${passColor(catRate)};${isWinner ? 'font-weight:700' : ''}" class="${isWinner ? 'cmp-winner' : ''}">${(catRate*100).toFixed(0)}%</span></td>`;
+        }).join('');
+
+        html += `<tr>
+          <td>${nameCells}</td>
+          <td>${overallCell}</td>
+          ${catCells}
+          <td style="text-align:right;color:var(--muted)">${lat != null ? lat.toFixed(0) : '—'}</td>
+        </tr>`;
+      }
+      return html;
+    }
+
+    const tbody = $('cmp-body');
+    if (!tbody) return;
+    tbody.innerHTML =
+      renderGroup('General Purpose Guardrails', generalSorted) +
+      renderGroup('Specialized Tools', specializedSorted) +
+      (otherSorted.length ? renderGroup('Other', otherSorted) : '');
+
+    $('comparison-section').style.display = '';
+  }
+
   async function loadLatest() {
     try {
       const res  = await fetch('/api/benchmark/latest');
@@ -691,21 +922,33 @@ _INDEX_HTML = """<!DOCTYPE html>
       }
       const meta    = data.metadata || {};
       const results = data.results  || {};
-      let t  = `Run ID:  ${meta.run_id || 'N/A'}\\n`;
+
+      // ── Text summary (short) ──
+      let t  = `Run ID:  ${(results.run_id || meta.run_id || 'N/A').slice(0,8)}…\\n`;
       t += `Date:    ${(meta.generated_at || '').slice(0,10) || 'N/A'}\\n`;
-      t += `Backends: ${(meta.backends_tested || []).join(', ') || 'none'}\\n\\n`;
-      if (results.best_overall) t += `Best:  ${results.best_overall}\\n\\n`;
+      if (results.best_overall) t += `Best:    ${results.best_overall}\\n`;
       const sums = results.backend_summaries || {};
-      for (const [b, s] of Object.entries(sums)) {
+      const sorted = Object.entries(sums).sort((a,b) => (b[1].pass_rate||0) - (a[1].pass_rate||0));
+      t += '\\n';
+      for (const [b, s] of sorted) {
         const pct = ((s.pass_rate || 0) * 100).toFixed(0);
         const bar = '█'.repeat(Math.round((s.pass_rate || 0) * 12));
         t += `${b.padEnd(24)} ${pct.padStart(3)}%  ${bar}\\n`;
       }
       $('latest-summary').textContent = t;
+
+      // ── run-id label on comparison table ──
+      const runId = results.run_id || meta.run_id;
+      if (runId) $('cmp-run-id').textContent = 'run: ' + runId.slice(0,8) + '…';
+
+      // ── Comparison table ──
+      if (Object.keys(sums).length) renderComparisonTable(results);
+
+      // ── Download buttons ──
       if (meta.generated_at) {
-        const dt   = new Date(meta.generated_at);
-        const yr   = dt.getFullYear();
-        const mo   = String(dt.getMonth() + 1).padStart(2, '0');
+        const dt = new Date(meta.generated_at);
+        const yr = dt.getFullYear();
+        const mo = String(dt.getMonth() + 1).padStart(2, '0');
         showDownloadButtons(`benchmark_${yr}_${mo}`, $('latest-downloads'));
       }
     } catch(e) {
@@ -877,6 +1120,29 @@ _INDEX_HTML = """<!DOCTYPE html>
   loadAdapters().then(() => loadCustomProbes());
   loadLatest();
 </script>
+<!-- ── Benchmark loading overlay ──────────────────────────────────────────── -->
+<div id="bench-overlay">
+  <div style="font-size:0.9rem;font-weight:700;color:#fff;margin-bottom:4px;letter-spacing:-0.01em">
+    ⚡ Firing probes against backends in parallel
+  </div>
+  <div id="ov-sub" style="font-size:0.72rem;color:rgba(255,255,255,0.4);margin-bottom:18px">
+    78 probes &times; <span id="ov-nbackends">N</span> backends &nbsp;·&nbsp; each backend independent
+  </div>
+  <div style="width:480px;max-width:90vw;margin-bottom:18px">
+    <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+      <span id="ov-done-text" style="font-size:0.7rem;color:rgba(255,255,255,0.5)">0 / 0 backends complete</span>
+      <span id="ov-pct"       style="font-size:0.7rem;font-weight:600;color:#60a5fa">0%</span>
+    </div>
+    <div style="height:5px;background:rgba(255,255,255,0.1);border-radius:4px;overflow:hidden">
+      <div id="ov-bar" style="height:100%;border-radius:4px;background:linear-gradient(90deg,#38bdf8,#818cf8);width:0%;transition:width 1s linear"></div>
+    </div>
+  </div>
+  <div class="ov-bk-rows" id="ov-bk-rows"></div>
+  <div style="margin-top:18px;font-size:0.7rem;color:rgba(255,255,255,0.3);display:flex;gap:12px;align-items:center">
+    <span id="ov-timer" style="font-family:monospace;font-size:0.82rem;color:rgba(255,255,255,0.55)">00:00</span>
+    <span>elapsed &nbsp;·&nbsp; results appear when all backends finish</span>
+  </div>
+</div>
 </body>
 </html>
 """
