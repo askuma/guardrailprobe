@@ -3,8 +3,8 @@
     "year": 2026,
     "month": 6,
     "month_name": "June",
-    "run_id": "20b24ec7-4528-4311-af0b-9b5acf279797",
-    "generated_at": "2026-06-25T17:56:20.515927+00:00",
+    "run_id": "275d0dee-4e27-4302-b4e9-f33e460981de",
+    "generated_at": "2026-06-26T17:31:53.057714+00:00",
     "backends_tested": [
       "nemo",
       "lakera",
@@ -17,21 +17,21 @@
       "openai_moderation",
       "azure_prompt_shields"
     ],
-    "best_overall": "nemo",
+    "best_overall": "llama_firewall",
     "best_overall_pass_rate": 85.9,
     "per_backend_rates": {
-      "nemo": 85.9,
+      "nemo": 0.0,
       "lakera": 83.3,
       "azure_content_safety": 25.6,
       "aws_bedrock": 59.0,
-      "llama_firewall": 0.0,
-      "llm_guard": 35.9,
+      "llama_firewall": 85.9,
+      "llm_guard": 80.0,
       "guardrails_ai": 2.6,
       "presidio": 6.4,
       "openai_moderation": 100.0,
       "azure_prompt_shields": 25.3
     },
-    "probe_count": 624,
+    "probe_count": 679,
     "backends_skipped": {},
     "json_url": "benchmarks/benchmark_2026_06.json",
     "markdown_url": "benchmarks/benchmark_2026_06.md",
@@ -42,8 +42,8 @@
       "year": 2026,
       "month": 6,
       "month_name": "June",
-      "run_id": "20b24ec7-4528-4311-af0b-9b5acf279797",
-      "generated_at": "2026-06-25T17:56:20.515927+00:00",
+      "run_id": "275d0dee-4e27-4302-b4e9-f33e460981de",
+      "generated_at": "2026-06-26T17:31:53.057714+00:00",
       "backends_tested": [
         "nemo",
         "lakera",
@@ -56,25 +56,45 @@
         "openai_moderation",
         "azure_prompt_shields"
       ],
-      "best_overall": "nemo",
+      "best_overall": "llama_firewall",
       "best_overall_pass_rate": 85.9,
       "per_backend_rates": {
-        "nemo": 85.9,
+        "nemo": 0.0,
         "lakera": 83.3,
         "azure_content_safety": 25.6,
         "aws_bedrock": 59.0,
-        "llama_firewall": 0.0,
-        "llm_guard": 35.9,
+        "llama_firewall": 85.9,
+        "llm_guard": 80.0,
         "guardrails_ai": 2.6,
         "presidio": 6.4,
         "openai_moderation": 100.0,
         "azure_prompt_shields": 25.3
       },
-      "probe_count": 624,
+      "probe_count": 679,
       "backends_skipped": {},
       "json_url": "benchmarks/benchmark_2026_06.json",
       "markdown_url": "benchmarks/benchmark_2026_06.md",
       "pdf_url": null
+    },
+    {
+      "year": 2026,
+      "month": 7,
+      "month_name": "July",
+      "run_id": "8c75e497-194d-42ef-ab2f-bafed4aae7b7",
+      "generated_at": "2026-06-26T16:45:25.980864+00:00",
+      "backends_tested": [],
+      "best_overall": "llm_guard",
+      "best_overall_pass_rate": 0.0,
+      "per_backend_rates": {
+        "llm_guard": 0.0
+      },
+      "probe_count": 0,
+      "backends_skipped": {
+        "llm_guard": "MISSING_CREDENTIALS"
+      },
+      "json_url": "benchmarks/benchmark_2026_07.json",
+      "markdown_url": "benchmarks/benchmark_2026_07.md",
+      "pdf_url": "benchmarks/benchmark_2026_07.pdf"
     }
   ]
 }

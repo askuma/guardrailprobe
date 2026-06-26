@@ -1384,4 +1384,218 @@ def create_app() -> Flask:
         _save_custom_probes(new_probes)
         return jsonify({"deleted": probe_id})
 
+    # ── /redteam/* routes — mirrors monorepo server.py schema exactly ─────────
+
+    from guardrailprobe._types import GuardrailBackend as _GB
+    from guardrailprobe.probes import AttackCategory as _AC, AttackProbe as _AP, ProbeLibrary as _PL
+    from guardrailprobe.runner import RedTeamRunner as _RTR, BACKEND_SCOPE as _BSCOPE
+
+    _rt_probe_library: _PL = _PL()
+    _rt_runner: _RTR = _RTR()
+
+    def _probe_to_dict(p):
+        return {
+            "id":              p.id,
+            "category":        p.category.value,
+            "payload":         p.payload,
+            "expected_action": p.expected_action.value,
+            "severity":        p.severity,
+            "owasp_ref":       p.owasp_ref,
+            "description":     p.description,
+            "tags":            p.tags,
+        }
+
+    def _probe_result_to_dict(pr):
+        return {
+            "probe_id":        pr.probe.id,
+            "owasp_ref":       pr.probe.owasp_ref,
+            "severity":        pr.probe.severity,
+            "description":     pr.probe.description,
+            "tags":            pr.probe.tags,
+            "backend":         pr.backend.value,
+            "actual_action":   pr.actual_action.value if pr.actual_action else None,
+            "expected_action": pr.expected_action.value,
+            "passed":          pr.passed,
+            "latency_ms":      pr.latency_ms,
+            "timestamp":       pr.timestamp,
+            "risk_score":      getattr(pr.raw_response, "risk_score", None),
+            "detected_risks":  getattr(pr.raw_response, "detected_risks", []),
+        }
+
+    def _report_to_dict(r):
+        return {
+            "backend":             r.backend.value,
+            "run_id":              r.run_id,
+            "timestamp":           r.timestamp,
+            "total_probes":        r.total_probes,
+            "skipped_count":       r.skipped_count,
+            "coverage_pct":        r.coverage_pct,
+            "passed":              r.passed,
+            "failed":              r.failed,
+            "pass_rate":           r.pass_rate,
+            "results_by_category": r.results_by_category,
+            "results_by_severity": r.results_by_severity,
+            "average_latency_ms":  r.average_latency_ms,
+            "probe_results":       [_probe_result_to_dict(pr) for pr in r.probe_results],
+        }
+
+    def _comparison_to_dict(c):
+        import os as _os
+        import urllib.parse as _up
+        scope = dict(_BSCOPE)
+        ga_url = _os.getenv("GA_GUARD_API_URL", "").strip()
+        if ga_url:
+            host = _up.urlparse(ga_url).netloc or "Custom API"
+            scope["ga_guard"] = {**scope.get("ga_guard", {}), "label": f"Custom API ({host})"}
+        else:
+            scope["ga_guard"] = {
+                "type": "specialized",
+                "label": "Custom HTTP Guardrail",
+                "note": "Set GA_GUARD_API_URL to point at your guardrail API endpoint.",
+            }
+        return {
+            "run_id":           c.run_id,
+            "timestamp":        c.timestamp,
+            "backends_tested":  [b.value for b in c.backends_tested],
+            "reports":          {k: _report_to_dict(r) for k, r in c.reports.items()},
+            "best_overall":     c.best_overall,
+            "worst_overall":    c.worst_overall,
+            "category_winners": c.category_winners,
+            "summary_table":    c.summary_table,
+            "skipped_backends": c.skipped_backends,
+            "backend_scope":    scope,
+        }
+
+    @app.post("/redteam/run")
+    def redteam_run():
+        body = request.get_json(force=True) or {}
+        try:
+            backend = _GB(body.get("backend", ""))
+        except ValueError:
+            return jsonify({"error": f"Unknown backend: {body.get('backend')!r}. "
+                            f"Valid: {[b.value for b in _GB]}"}), 400
+        cats = None
+        if body.get("categories"):
+            try:
+                cats = [_AC(c) for c in body["categories"]]
+            except ValueError as e:
+                return jsonify({"error": str(e)}), 400
+        try:
+            report = _rt_runner.run_against_backend(
+                backend,
+                probes=_rt_probe_library.all_probes(),
+                categories=cats,
+                severity_filter=body.get("severity"),
+            )
+            return jsonify(_report_to_dict(report))
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.post("/redteam/compare")
+    def redteam_compare():
+        import os as _os
+        body = request.get_json(force=True) or {}
+        raw_backends = body.get("backends") or [
+            b.value for b in _GB
+            if not (b is _GB.GA_GUARD and not _os.getenv("GA_GUARD_API_URL", "").strip())
+        ]
+        try:
+            backends = [_GB(b) for b in raw_backends]
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        cats = None
+        if body.get("categories"):
+            try:
+                cats = [_AC(c) for c in body["categories"]]
+            except ValueError as e:
+                return jsonify({"error": str(e)}), 400
+        try:
+            comparison = _rt_runner.compare_backends(
+                backends,
+                probes=_rt_probe_library.all_probes(),
+                categories=cats,
+            )
+            return jsonify(_comparison_to_dict(comparison))
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.get("/redteam/probes")
+    def redteam_list_probes():
+        probes = _rt_probe_library.all_probes()
+        ref_filter = request.args.get("owasp_ref") or request.args.get("category")
+        if ref_filter:
+            try:
+                cat = _AC(ref_filter)
+            except ValueError:
+                return jsonify({"error": f"Unknown category: {ref_filter!r}"}), 400
+            probes = _rt_probe_library.get_by_category(cat)
+        severity = request.args.get("severity")
+        if severity:
+            probes = [p for p in probes if p.severity == severity]
+        return jsonify([_probe_to_dict(p) for p in probes])
+
+    @app.post("/redteam/probes/custom")
+    def redteam_add_custom_probe():
+        from guardrailprobe._types import ActionType as _AT
+        body = request.get_json(force=True) or {}
+        try:
+            category = _AC(body.get("category", ""))
+            action   = _AT(body.get("expected_action", ""))
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        try:
+            probe = _AP(
+                id=body["id"],
+                category=category,
+                payload=body["payload"],
+                expected_action=action,
+                severity=body.get("severity", "medium"),
+                owasp_ref=body.get("owasp_ref", category.value),
+                description=body.get("description", ""),
+                tags=body.get("tags") or [],
+            )
+            _rt_probe_library.add_custom_probe(probe)
+        except (ValueError, KeyError) as e:
+            return jsonify({"error": str(e)}), 400
+        return jsonify({"status": "added", "probe_id": body["id"]}), 201
+
+    @app.get("/redteam/reports/<run_id>")
+    def redteam_get_report(run_id: str):
+        report = _rt_runner.get_report(run_id)
+        if report is not None:
+            return jsonify(_report_to_dict(report))
+        cmp = _rt_runner.get_comparison_report(run_id)
+        if cmp is not None:
+            return jsonify(_comparison_to_dict(cmp))
+        return jsonify({"error": f"Report not found: {run_id}"}), 404
+
+    @app.get("/redteam/reports/<run_id>/export")
+    def redteam_export_report(run_id: str):
+        report = _rt_runner.get_report(run_id)
+        if report is None:
+            report = _rt_runner.get_comparison_report(run_id)
+        if report is None:
+            return jsonify({"error": f"Report not found: {run_id}"}), 404
+        try:
+            from guardrailprobe.signer import ReportSigner
+            import tempfile
+            signer = ReportSigner()
+            tmp = tempfile.NamedTemporaryFile(
+                suffix=".pdf", delete=False, prefix=f"guardrail_{run_id[:8]}_"
+            )
+            tmp_path = tmp.name
+            tmp.close()
+            out_path = signer.generate_signed_report(report, tmp_path)
+            from flask import send_file
+            return send_file(
+                out_path,
+                mimetype="application/pdf",
+                as_attachment=True,
+                download_name=f"redteam_report_{run_id[:8]}.pdf",
+            )
+        except ImportError:
+            return jsonify({"error": "PDF signing not available — install pyhanko reportlab"}), 501
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
+
     return app

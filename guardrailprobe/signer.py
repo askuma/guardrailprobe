@@ -31,7 +31,7 @@ import importlib.util
 import logging
 import os
 import re
-
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -118,6 +118,28 @@ _OWASP_LABELS: Dict[str, str] = {
     "LLM09": "Overreliance",
     "LLM10": "Model Theft",
 }
+
+
+# ── Signing configuration ─────────────────────────────────────────────────────
+
+
+@dataclass
+class SigningConfig:
+    source: str = "auto"
+    cert_path: str = ""
+    cert_pass: str = ""
+    org_name: str = ""
+    tsa_url: str = "http://freetsa.org/tsr"
+
+    @classmethod
+    def from_env(cls) -> "SigningConfig":
+        return cls(
+            source="file" if os.getenv("GUARDRAIL_SIGNING_KEY_P12") else "auto",
+            cert_path=os.getenv("GUARDRAIL_SIGNING_KEY_P12", ""),
+            cert_pass=os.getenv("GUARDRAIL_SIGNING_KEY_PASS", ""),
+            org_name=os.getenv("GUARDRAIL_SIGNING_ORG", "GuardrailProbe Benchmark"),
+            tsa_url=os.getenv("GUARDRAIL_TSA_URL", "http://freetsa.org/tsr"),
+        )
 
 
 # ── Main class ────────────────────────────────────────────────────────────────

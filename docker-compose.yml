@@ -60,9 +60,10 @@ services:
       # ── GuardrailsAI hub token (optional — regex fallback always active) ───
       - GUARDRAILS_TOKEN=${GUARDRAILS_TOKEN:-}
 
-      # ── LlamaFirewall — HuggingFace token to download PromptGuard 2 ────────
+      # ── LlamaFirewall / LLM Guard — HuggingFace token ───────────────────────
       # Accept license at huggingface.co/meta-llama/Llama-Prompt-Guard-2-86M first.
-      # Skipped if not set AND model not already cached in site-packages.
+      # Set HF_TOKEN to download the model on first run; subsequent runs use the cache
+      # from ~/.cache/huggingface on the host (mounted as a volume below).
       - HF_TOKEN=${HF_TOKEN:-}
       - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN:-}
 
@@ -86,6 +87,9 @@ services:
       # If ./site-packages is empty, the entrypoint skips it gracefully.
       #   pip install llamafirewall llm-guard --target ./site-packages
       - ./site-packages:/app/site-packages:ro
+      # HuggingFace model cache — share the host cache so models downloaded
+      # outside Docker (or on first container run) are reused without re-downloading.
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
 
     dns:
       - 8.8.8.8

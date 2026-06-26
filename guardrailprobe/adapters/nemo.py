@@ -206,7 +206,7 @@ models:
     engine: openai
     model: {model}
     parameters:
-      openai_api_key: {openai_key}
+      api_key: {openai_key}
 {rails}"""
 
         or_key   = os.getenv("OPENROUTER_API_KEY", "").strip()
@@ -219,7 +219,7 @@ models:
     model: {or_model}
     parameters:
       openai_api_base: https://openrouter.ai/api/v1
-      openai_api_key: {or_key}
+      api_key: {or_key}
 {rails}"""
 
         az_key = os.getenv("AZURE_OPENAI_API_KEY", "").strip()

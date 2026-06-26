@@ -1,7 +1,8 @@
 """guardrailprobe.adapters.llama_firewall — Meta LlamaFirewall adapter.
 
-Runs Meta's PromptGuard 2 model locally — no API key required, but the model
-must be available (either cached locally, or HF_TOKEN set to download it).
+Runs Meta's PromptGuard 2 model locally — no API key required once the model
+is cached. Set HF_TOKEN to download it on first run (accept the model license
+on HuggingFace first). The model is cached in HF_HOME (/app/hf_models in Docker).
 
 Requires: pip install llamafirewall --target ./site-packages --ignore-installed
 Model:    meta-llama/Llama-Prompt-Guard-2-86M (gated — accept license on HuggingFace)
@@ -30,11 +31,9 @@ def _hf_token() -> str:
 
 
 def _model_cached() -> bool:
-    """Return True only when model weights are present and usable."""
+    """Return True when model weights are present in the HF cache."""
     try:
         from huggingface_hub import try_to_load_from_cache  # noqa: PLC0415
-        # config.json may exist even when the download was incomplete —
-        # verify that actual weight files are present.
         for weight_file in ("model.safetensors", "pytorch_model.bin"):
             if try_to_load_from_cache(_MODEL_ID, weight_file) is not None:
                 return True
@@ -47,23 +46,18 @@ class LlamaFirewallAdapter:
     backend_name = "llama_firewall"
 
     def check_credentials(self) -> bool:
-        if not _LLAMAFIREWALL_SDK:
-            return False
-        return bool(_hf_token()) or _model_cached()
+        # Mirrors monorepo: only gate on SDK presence. Model is loaded on
+        # first probe; if unavailable the scan raises and we fail-closed (BLOCK).
+        return _LLAMAFIREWALL_SDK
 
     def credential_status(self) -> AdapterStatus:
         return AdapterStatus.RAN if self.check_credentials() else AdapterStatus.NO_API_KEY
 
     def missing_credential_message(self) -> str:
-        if not _LLAMAFIREWALL_SDK:
-            return (
-                "LlamaFirewall SDK not installed. "
-                "Install: python3.12 -m pip install llamafirewall "
-                "--target ./site-packages --ignore-installed"
-            )
         return (
-            f"Model {_MODEL_ID} not cached and HF_TOKEN not set. "
-            "Accept the model license on huggingface.co, then add HF_TOKEN to .env."
+            "LlamaFirewall SDK not installed. "
+            "Install: python3.12 -m pip install llamafirewall "
+            "--target ./site-packages --ignore-installed"
         )
 
     def _scan(self, payload: str):
@@ -78,13 +72,20 @@ class LlamaFirewallAdapter:
 
         try:
             return asyncio.run(_run())
-        except RuntimeError:
+        except RuntimeError as exc:
+            # Only retry via ThreadPoolExecutor for event-loop conflicts
+            # (e.g. running inside FastAPI/Uvicorn where the loop is already running).
+            # Any other RuntimeError (e.g. PyTorch meta tensor errors) must propagate
+            # so run_probe's except catches it quickly instead of waiting 60 s × N probes.
+            _msg = str(exc).lower()
+            if "event loop" not in _msg and "cannot run nested" not in _msg:
+                raise
             import concurrent.futures  # noqa: PLC0415
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                return pool.submit(asyncio.run, _run()).result(timeout=60)
+                return pool.submit(asyncio.run, _run()).result(timeout=30)
 
     def run_probe(self, payload: str) -> ProbeResponse:
-        if not self.check_credentials():
+        if not _LLAMAFIREWALL_SDK:
             return ProbeResponse(
                 action=ActionType.SKIPPED,
                 latency_ms=0.0,
@@ -99,35 +100,15 @@ class LlamaFirewallAdapter:
             result = self._scan(payload)
         except Exception as exc:
             latency = (time.perf_counter() - t0) * 1000
-            err_str = str(exc)
-            # Incomplete model download — weights missing or meta-tensor (no data)
-            if any(k in err_str for k in (
-                "no file named pytorch_model.bin",
-                "model.safetensors",
-                "meta tensor",
-                "to_empty",
-            )):
-                logger.warning(
-                    "LlamaFirewall: model weights incomplete or corrupt — "
-                    "re-run: rm -rf ~/.cache/huggingface/hub/models--meta-llama--Llama-Prompt-Guard-2-86M "
-                    "then restart the container with HF_TOKEN set."
-                )
-                return ProbeResponse(
-                    action=ActionType.SKIPPED,
-                    latency_ms=latency,
-                    raw_response={"error": err_str},
-                    backend=self.backend_name,
-                    status=AdapterStatus.NO_API_KEY,
-                    status_message="Model weights incomplete. Delete cache and re-download with HF_TOKEN.",
-                )
             logger.error("LlamaFirewall error: %s", exc)
+            # Fail-closed: any scan failure is treated as a detected threat.
             return ProbeResponse(
                 action=ActionType.BLOCK,
                 latency_ms=latency,
-                raw_response={"error": err_str},
+                raw_response={"error": str(exc)},
                 backend=self.backend_name,
                 status=AdapterStatus.ERROR,
-                status_message=err_str,
+                status_message=str(exc),
             )
 
         latency = (time.perf_counter() - t0) * 1000
@@ -143,7 +124,7 @@ class LlamaFirewallAdapter:
         )
 
     def health_check(self) -> Dict[str, Any]:
-        if not self.check_credentials():
+        if not _LLAMAFIREWALL_SDK:
             return {"status": "skipped", "backend": self.backend_name,
                     "reason": self.missing_credential_message()}
         return {"status": "ok", "backend": self.backend_name,

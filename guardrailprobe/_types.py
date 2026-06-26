@@ -39,7 +39,6 @@ class GuardrailBackend(str, Enum):
     LLAMA_FIREWALL = "llama_firewall"
     LLM_GUARD = "llm_guard"
     GA_GUARD = "ga_guard"
-    CUSTOM_HTTP = "custom_http"   # legacy alias — prefer GA_GUARD
 
 
 class AdapterStatus(str, Enum):
