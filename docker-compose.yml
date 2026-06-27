@@ -14,8 +14,12 @@ services:
         GUARDRAILS_TOKEN: ${GUARDRAILS_TOKEN:-} # authenticates hub validator install
     image: guardrailprobe:0.1.0
     container_name: guardrailprobe
+    # network_mode: host makes the container share the host's network stack so
+    # localhost:11434 (Ollama) is reachable without exposing Ollama to the LAN.
+    # Port mappings are implicit — dashboard stays at http://localhost:8080.
+    network_mode: host
     ports:
-      - "8080:8080"            # Flask dashboard  →  http://localhost:8080
+      - "8080:8080"            # ignored when network_mode: host; kept for documentation
     env_file:
       - path: .env             # Copy .env.example → .env and fill in values
         required: false        # Container starts even without a .env file
@@ -60,9 +64,12 @@ services:
       - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT:-}
       - AZURE_OPENAI_DEPLOYMENT=${AZURE_OPENAI_DEPLOYMENT:-gpt-4o-mini}
       - AZURE_OPENAI_API_VERSION=${AZURE_OPENAI_API_VERSION:-2024-02-15-preview}
-      # Ollama — local LLM, no API key required
+      # Ollama — local LLM, no API key required, no rate limits.
+      # With network_mode: host, localhost:11434 reaches the host's Ollama directly.
+      # When set, Ollama takes priority over Bedrock for NeMo LLM calls.
+      # Default is empty — set OLLAMA_BASE_URL=http://localhost:11434 in .env to enable.
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
-      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2}
 
       # ── GuardrailsAI hub token (optional — regex fallback always active) ───
       - GUARDRAILS_TOKEN=${GUARDRAILS_TOKEN:-}

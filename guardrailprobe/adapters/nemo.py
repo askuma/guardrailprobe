@@ -7,13 +7,13 @@ matching runs automatically — no API key required for basic operation.
 LLM provider is auto-detected from env vars (first match wins):
 
   NEMO_OPENAI_API_KEY                   → openai  (dedicated NeMo key)
-  AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY → bedrock (no rate limits; recommended)
+  OLLAMA_BASE_URL                       → ollama  (local, no rate limits; recommended)
+  AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY → bedrock (fallback when Ollama not set)
   OPENROUTER_API_KEY                    → openai  (via openrouter.ai, free tier 16 req/min)
   OPENAI_API_KEY                        → openai  (gpt-4o-mini, may be quota-limited)
   AZURE_OPENAI_API_KEY +
     AZURE_OPENAI_ENDPOINT               → azure   (gpt-4o-mini)
   ANTHROPIC_API_KEY                     → anthropic via LangChain
-  OLLAMA_BASE_URL                       → ollama  (llama3, no key needed)
 
 check_credentials() returns True whenever the SDK is installed —
 colang pattern-matching works without any LLM key and catches the
@@ -47,36 +47,14 @@ _NEMO_RATE_LOCK = threading.Lock()
 _NEMO_LAST_CALL_TS: float = 0.0
 _NEMO_MIN_CALL_GAP: float = 4.0  # seconds; applied only for non-Bedrock providers
 
-# For Bedrock: stagger probe STARTS by 3 seconds so multiple probes can be in-flight
-# simultaneously without bursting the model's TPS quota.  Simultaneous starts caused
-# 4-6 API calls to fire at once → ThrottlingException → boto3 retries exhausted the
-# 30s asyncio timeout.  With a 3s start gap at most 2 probes overlap, keeping the
-# burst ≤2 TPS.  Expected wall time: 78 probes × 3s ≈ 4 minutes.
-_NEMO_BEDROCK_START_LOCK = threading.Lock()
-_NEMO_BEDROCK_LAST_START: float = 0.0
-_NEMO_BEDROCK_START_GAP: float = 3.0  # seconds between probe starts
+# For Bedrock: allow only one probe in-flight at a time.  Each probe makes up to 3
+# sequential Bedrock API calls (intent classification, next-step selection, bot
+# response); overlapping probes multiply that into 6+ concurrent calls and exhaust
+# Nova Pro's TPS quota in ap-southeast-2 within minutes.  Sequential execution keeps
+# the call rate at ≤1 TPS and eliminates ThrottlingException entirely.
+# Early-exit fast-path probes bypass this semaphore and return in <1ms.
+_NEMO_BEDROCK_SEM = threading.Semaphore(1)
 
-# Persistent background event loop — shared across all probe threads so asyncio
-# resources (aiohttp sessions, SSL contexts) stay warm between calls.
-# asyncio.run() creates+destroys a loop per call; run_coroutine_threadsafe() reuses
-# this one and eliminates the RuntimeError fallback needed for FastAPI/Uvicorn contexts.
-_NEMO_LOOP: "asyncio.AbstractEventLoop | None" = None
-_NEMO_LOOP_LOCK = threading.Lock()
-
-
-def _get_nemo_loop() -> "asyncio.AbstractEventLoop":
-    """Return the shared daemon event loop, starting it if not yet running."""
-    global _NEMO_LOOP
-    if _NEMO_LOOP is not None and _NEMO_LOOP.is_running():
-        return _NEMO_LOOP
-    with _NEMO_LOOP_LOCK:
-        if _NEMO_LOOP is not None and _NEMO_LOOP.is_running():
-            return _NEMO_LOOP
-        loop = asyncio.new_event_loop()
-        t = threading.Thread(target=loop.run_forever, daemon=True, name="nemo-aio-loop")
-        t.start()
-        _NEMO_LOOP = loop
-    return _NEMO_LOOP
 
 _NEMO_REFUSAL_RE = re.compile(
     r"I('m| am) (sorry|unable|not able to)|"
@@ -278,12 +256,12 @@ class NemoAdapter:
 
         Priority:
           1. NEMO_OPENAI_API_KEY     → engine: openai (dedicated NeMo key)
-          2. AWS_ACCESS_KEY_ID       → engine: bedrock (no per-minute rate limits)
-          3. OPENROUTER_API_KEY      → engine: openai (via openrouter.ai, free tier)
-          4. OPENAI_API_KEY          → engine: openai (global key, may be quota-limited)
-          5. AZURE_OPENAI_API_KEY
+          2. OLLAMA_BASE_URL         → engine: ollama (local, no rate limits — preferred)
+          3. AWS_ACCESS_KEY_ID       → engine: bedrock (fallback when Ollama not set)
+          4. OPENROUTER_API_KEY      → engine: openai (via openrouter.ai, free tier)
+          5. OPENAI_API_KEY          → engine: openai (global key, may be quota-limited)
+          6. AZURE_OPENAI_API_KEY
              + AZURE_OPENAI_ENDPOINT → engine: azure
-          6. OLLAMA_BASE_URL         → engine: ollama
           7. ANTHROPIC_API_KEY       → engine: anthropic
           8. (none)                  → pattern-matching only (no models block)
         """
@@ -291,10 +269,10 @@ class NemoAdapter:
 
         # Priority order for NeMo LLM provider:
         # 1. NEMO_OPENAI_API_KEY — explicit NeMo-only OpenAI key
-        # 2. AWS Bedrock          — no per-minute rate limits; uses AWS_ACCESS_KEY_ID creds
-        # 3. OPENROUTER_API_KEY  — free-tier OpenAI-compatible (16 req/min limit)
-        # 4. OPENAI_API_KEY      — global key (may be shared / quota-limited by other services)
-        # 5. AZURE / OLLAMA / ANTHROPIC
+        # 2. OLLAMA_BASE_URL     — local inference, no rate limits; wins over Bedrock
+        #                          when set so AWS creds don't accidentally override it
+        # 3. AWS Bedrock         — fallback when Ollama is not configured
+        # 4. OPENROUTER / OPENAI / AZURE / ANTHROPIC
 
         nemo_openai_key = os.getenv("NEMO_OPENAI_API_KEY", "").strip()
         if nemo_openai_key:
@@ -308,15 +286,28 @@ models:
     model: {model}
 {rails}"""
 
+        ollama_url   = os.getenv("OLLAMA_BASE_URL", "").strip()
+        ollama_model = os.getenv("OLLAMA_MODEL", "llama3.2").strip()
+        if ollama_url and _ollama_reachable():
+            # Use engine: openai with Ollama's OpenAI-compatible /v1 endpoint.
+            # engine: ollama triggers the deprecated langchain_community.llms.Ollama
+            # class (synchronous, blocks the async event loop); the OpenAI-compat path
+            # uses LangChain's async ChatOpenAI client which works correctly.
+            ollama_v1 = ollama_url.rstrip("/") + "/v1"
+            return f"""
+models:
+  - type: main
+    engine: openai
+    model: {ollama_model}
+    parameters:
+      base_url: {ollama_v1}
+      api_key: ollama
+{rails}"""
+
         aws_key    = os.getenv("AWS_ACCESS_KEY_ID", "").strip()
         aws_secret = os.getenv("AWS_SECRET_ACCESS_KEY", "").strip()
         aws_region = os.getenv("AWS_DEFAULT_REGION", "us-east-1").strip()
-        # Default: Llama 3.3 70B cross-region inference (fast, strong safety reasoning).
-        # Override with NEMO_BEDROCK_MODEL if you need a different model.
-        bedrock_model = os.getenv(
-            "NEMO_BEDROCK_MODEL",
-            "amazon.nova-pro-v1:0",
-        ).strip()
+        bedrock_model = os.getenv("NEMO_BEDROCK_MODEL", "amazon.nova-pro-v1:0").strip()
         if aws_key and aws_secret:
             return f"""
 models:
@@ -330,9 +321,6 @@ models:
 {rails}"""
 
         or_key   = os.getenv("OPENROUTER_API_KEY", "").strip()
-        # Default to nvidia/nemotron-3-nano-30b-a3b:free — fast MoE (3B active params),
-        # ~2s per probe, reliable free tier as of 2026-06; 6x faster than gpt-oss-120b:free.
-        # Use base_url + api_key (LangChain 0.3+ names); openai_api_base is ignored.
         or_model = os.getenv("OPENROUTER_MODEL", "nvidia/nemotron-3-nano-30b-a3b:free").strip()
         if or_key:
             return f"""
@@ -371,18 +359,6 @@ models:
       azure_endpoint: {az_ep}
       azure_deployment: {az_dep}
       api_version: "{az_ver}"
-{rails}"""
-
-        ollama_url   = os.getenv("OLLAMA_BASE_URL", "").strip()
-        ollama_model = os.getenv("OLLAMA_MODEL", "llama3").strip()
-        if ollama_url and _ollama_reachable():
-            return f"""
-models:
-  - type: main
-    engine: ollama
-    model: {ollama_model}
-    parameters:
-      base_url: {ollama_url}
 {rails}"""
 
         if os.getenv("ANTHROPIC_API_KEY", "").strip():
@@ -460,23 +436,24 @@ models:
                     if elapsed < _NEMO_MIN_CALL_GAP:
                         time.sleep(_NEMO_MIN_CALL_GAP - elapsed)
                     _NEMO_LAST_CALL_TS = time.perf_counter()
-            else:
-                # Bedrock: stagger probe starts so overlapping probes don't burst the
-                # model's TPS quota.  Probes may still overlap — we only gate the start.
-                global _NEMO_BEDROCK_LAST_START
-                with _NEMO_BEDROCK_START_LOCK:
-                    elapsed = time.perf_counter() - _NEMO_BEDROCK_LAST_START
-                    if elapsed < _NEMO_BEDROCK_START_GAP:
-                        time.sleep(_NEMO_BEDROCK_START_GAP - elapsed)
-                    _NEMO_BEDROCK_LAST_START = time.perf_counter()
 
-            import concurrent.futures  # noqa: PLC0415
-            fut = asyncio.run_coroutine_threadsafe(_run(), _get_nemo_loop())
+            if _bedrock_active:
+                _NEMO_BEDROCK_SEM.acquire()
             try:
-                response = fut.result(timeout=35)
-            except concurrent.futures.TimeoutError as exc:
-                fut.cancel()
-                raise TimeoutError("NeMo probe exceeded 35s wall-clock timeout") from exc
+                try:
+                    response = asyncio.run(_run())
+                except RuntimeError as exc:
+                    # Fallback for ASGI contexts (FastAPI/Uvicorn) where a loop is
+                    # already running — spin up a fresh loop in a worker thread.
+                    _msg = str(exc).lower()
+                    if "event loop" not in _msg and "cannot run nested" not in _msg:
+                        raise
+                    import concurrent.futures  # noqa: PLC0415
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                        response = pool.submit(asyncio.run, _run()).result(timeout=35)
+            finally:
+                if _bedrock_active:
+                    _NEMO_BEDROCK_SEM.release()
 
             if isinstance(response, dict):
                 content = response.get("content", "")
