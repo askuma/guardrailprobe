@@ -3,8 +3,8 @@
     "year": 2026,
     "month": 6,
     "month_name": "June",
-    "run_id": "e60fbe7e-ef64-47dc-b6dd-a5bd4a320b4b",
-    "generated_at": "2026-06-27T13:57:28.176791+00:00",
+    "run_id": "7e927d25-14fa-444a-9279-faf2796650ea",
+    "generated_at": "2026-06-27T17:21:00.188723+00:00",
     "backends_tested": [
       "nemo",
       "lakera",
@@ -31,7 +31,7 @@
       "openai_moderation": 100.0,
       "azure_prompt_shields": 24.4
     },
-    "probe_count": 682,
+    "probe_count": 684,
     "backends_skipped": {},
     "json_url": "benchmarks/benchmark_2026_06.json",
     "markdown_url": "benchmarks/benchmark_2026_06.md",
@@ -42,8 +42,8 @@
       "year": 2026,
       "month": 6,
       "month_name": "June",
-      "run_id": "e60fbe7e-ef64-47dc-b6dd-a5bd4a320b4b",
-      "generated_at": "2026-06-27T13:57:28.176791+00:00",
+      "run_id": "7e927d25-14fa-444a-9279-faf2796650ea",
+      "generated_at": "2026-06-27T17:21:00.188723+00:00",
       "backends_tested": [
         "nemo",
         "lakera",
@@ -70,7 +70,7 @@
         "openai_moderation": 100.0,
         "azure_prompt_shields": 24.4
       },
-      "probe_count": 682,
+      "probe_count": 684,
       "backends_skipped": {},
       "json_url": "benchmarks/benchmark_2026_06.json",
       "markdown_url": "benchmarks/benchmark_2026_06.md",
