@@ -29,7 +29,7 @@ No framework lock-in. No cloud account required. Just point it at an endpoint an
 
 | Backend | Adapter key | Notes |
 |---|---|---|
-| NVIDIA NeMo Guardrails | `nemo` | Requires `pip install guardrailprobe[nemo]` |
+| NVIDIA NeMo Guardrails | `nemo` | Requires `pip install guardrailprobe[nemo]` (includes `nemoguardrails`, `langchain`, `langchain-openai`, `langchain-aws`, `langchain-community`) |
 | Guardrails AI | `guardrails_ai` | Regex fallback always available; SDK optional |
 | Microsoft Presidio | `presidio` | Requires `pip install guardrailprobe[presidio]` |
 | Lakera Guard | `lakera` | Requires `LAKERA_GUARD_API_KEY` |
@@ -118,7 +118,7 @@ Here is the out-of-the-box status for each adapter and what you need to enable i
 |---|---|---|
 | `guardrails_ai` | None (regex fallback built-in) | Nothing — works without credentials |
 | `presidio` | spaCy model (bundled in image) | Nothing — runs locally |
-| `nemo` | `nemoguardrails` SDK (bundled) | One LLM key: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, or `AZURE_OPENAI_API_KEY` |
+| `nemo` | `nemoguardrails` + LangChain stack (bundled) | One LLM provider (priority order): AWS Bedrock (`AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY`, recommended — no rate limits), Ollama (`OLLAMA_BASE_URL`, local/offline), `NEMO_OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `AZURE_OPENAI_API_KEY`, or `ANTHROPIC_API_KEY`. Works without any LLM key in colang pattern-matching mode. |
 | `aws_bedrock` | `boto3` SDK (bundled) | `AWS_BEDROCK_GUARDRAIL_ID`, `AWS_DEFAULT_REGION`, AWS credentials |
 | `lakera` | None — direct REST via `httpx` | `LAKERA_GUARD_API_KEY` |
 | `openai_moderation` | None — direct REST via `httpx` | `OPENAI_API_KEY` |
@@ -215,6 +215,23 @@ docker compose run --rm guardrailprobe \
 
 Reports are written to the `guardrailprobe_reports` named volume and also to `./docs/benchmarks` on the host (via the `./docs` bind mount).
 
+### Ollama (local LLM for NeMo, GPU recommended)
+
+The container uses `network_mode: host` so `localhost:11434` inside the container reaches the host's Ollama process directly, without exposing Ollama to the LAN.
+
+```bash
+# Start Ollama on the host (separate terminal)
+ollama serve
+ollama pull llama3.2
+
+# Enable in .env
+echo "OLLAMA_BASE_URL=http://localhost:11434" >> .env
+
+docker compose up
+```
+
+Ollama is **disabled by default** (`OLLAMA_BASE_URL=`). CPU inference with llama3.2 is too slow for NeMo's 3-call-per-probe workflow (~20 s/probe); a GPU is recommended. Without `OLLAMA_BASE_URL`, NeMo falls through to AWS Bedrock if credentials are present.
+
 ### Skip the spaCy model download (CI / constrained environments)
 
 ```bash
@@ -295,13 +312,27 @@ cp .env.example .env
 | Variable | Backend |
 |---|---|
 | `LAKERA_GUARD_API_KEY` | Lakera Guard |
-| `OPENAI_API_KEY` | OpenAI Moderation (also used by NeMo) |
+| `OPENAI_API_KEY` | OpenAI Moderation; NeMo fallback (priority 5) |
 | `AZURE_CONTENT_SAFETY_ENDPOINT` + `AZURE_CONTENT_SAFETY_KEY` | Azure Content Safety **and** Azure Prompt Shields |
-| `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` | AWS Bedrock (or use an IAM role / `aws configure`) |
-| `AWS_BEDROCK_GUARDRAIL_ID` + `AWS_DEFAULT_REGION` | AWS Bedrock — guardrail ID and region |
+| `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` | AWS Bedrock Guardrails; NeMo LLM via Bedrock (priority 3, recommended) |
+| `AWS_BEDROCK_GUARDRAIL_ID` + `AWS_DEFAULT_REGION` | AWS Bedrock Guardrails — guardrail ID and region |
 | `GA_GUARD_API_URL` | GA Guard / any HTTPS guardrail endpoint |
 | `GA_GUARD_API_KEY` | GA Guard — optional API key |
 | `GUARDRAIL_SIGNING_KEY_P12` | PDF signing certificate path |
+
+#### NeMo-specific variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `NEMO_OPENAI_API_KEY` | — | Dedicated OpenAI key for NeMo only (priority 1); avoids sharing with OpenAI Moderation backend |
+| `NEMO_OPENAI_MODEL` | `gpt-4o-mini` | Model when using OpenAI or OpenRouter as NeMo LLM |
+| `NEMO_BEDROCK_MODEL` | `amazon.nova-pro-v1:0` | Bedrock model for NeMo intent classification |
+| `OPENROUTER_API_KEY` | — | OpenRouter free-tier LLM for NeMo (priority 4, 16 req/min limit) |
+| `OPENROUTER_MODEL` | `nvidia/nemotron-3-nano-30b-a3b:free` | Model when using OpenRouter |
+| `OLLAMA_BASE_URL` | _(empty)_ | Local Ollama endpoint for NeMo (priority 2); set to `http://localhost:11434` to enable. Requires GPU — CPU inference is too slow for NeMo's 3-call-per-probe flow |
+| `OLLAMA_MODEL` | `llama3.2` | Ollama model name |
+| `AZURE_OPENAI_API_KEY` + `AZURE_OPENAI_ENDPOINT` | — | Azure OpenAI as NeMo LLM (priority 6) |
+| `ANTHROPIC_API_KEY` | — | Anthropic Claude as NeMo LLM via LangChain (priority 7) |
 
 After either option, verify which backends are ready:
 

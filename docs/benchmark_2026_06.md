@@ -15,6 +15,12 @@
 - **Report generated:** 2026-06-27 10:04 UTC
 - **Run ID:** 362a0490-b65e-4ed6-a05f-95bd4f66cae8
 
+> **Note — NeMo latency**: the 17 726 ms average reported here reflects a run using
+> the 3-second Bedrock stagger gate (later replaced with `Semaphore(1)`) and before
+> the `langchain>=0.3.0` dependency was added. With those fixes (commit `5058629`),
+> NeMo latency on AWS Bedrock is ~3–7 s per probe. See `docs/benchmarks/` for the
+> most recent run.
+
 ---
 
 ## Overall Comparison
@@ -102,7 +108,7 @@
 | azure_prompt_shields | 24.4% | 750 ms | Moderate | Batch processing, async pipelines |
 | llama_firewall | 85.9% | 779 ms | Moderate | Batch processing, async pipelines |
 | azure_content_safety | 25.6% | 880 ms | Moderate | Batch processing, async pipelines |
-| nemo | 82.0% | 17726 ms | Slow | Offline analysis, compliance audits |
+| nemo | 82.0% | 17726 ms ⚠️ | Slow (pre-fix — see note above) | Real-time with Bedrock + Semaphore(1) (~3–7 s/probe) |
 | openai_moderation | 100.0% | 36575 ms | Slow | Offline analysis, compliance audits |
 
 ---
