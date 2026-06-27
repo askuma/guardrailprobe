@@ -359,49 +359,273 @@ class ReportSigner:
             story.append(sev_tbl)
 
         else:
-            # Comparison tables
-            story.append(Paragraph("Backend Comparison Summary", H2))
-            comp_rows = [["Backend", "Total", "Passed", "Failed", "Pass %", "Avg ms"]]
-            for b in report.backends_tested:
-                bval = _backend_str(b)
-                r = report.reports.get(bval)
-                if not r:
+            # ── TL;DR ─────────────────────────────────────────────────────────
+            story.append(Paragraph("TL;DR", H2))
+            _best_ratio_name = "—"
+            _best_ratio_val = -1.0
+            for _bname, _r in report.reports.items():
+                if _bname in report.skipped_backends:
                     continue
-                comp_rows.append([
-                    bval,
-                    str(r.total_probes),
-                    str(r.passed),
-                    str(r.failed),
-                    f"{r.pass_rate * 100:.1f}%",
-                    f"{r.average_latency_ms:.0f}",
-                ])
-            comp_tbl = Table(comp_rows, colWidths=[38 * mm, 18 * mm, 18 * mm, 18 * mm, 18 * mm, 20 * mm])
-            comp_tbl.setStyle(TableStyle(_base_style(6)))
-            story.append(comp_tbl)
-            story.append(Spacer(1, 4 * mm))
+                _lat = _r.average_latency_ms or 0.001
+                _ratio = _r.pass_rate / _lat
+                if _ratio > _best_ratio_val:
+                    _best_ratio_val = _ratio
+                    _best_ratio_name = _bname
+            _n_tested = len(report.backends_tested)
+            _n_skipped = len(report.skipped_backends)
+            _total_probes = sum(_r.total_probes for _r in report.reports.values())
+            _ts_str = ts.strftime("%Y-%m-%d %H:%M UTC") if hasattr(ts, "strftime") else str(report.timestamp)
+            tldr_rows = [
+                ["Winner",                          str(report.best_overall)],
+                ["Best accuracy/latency ratio",     _best_ratio_name],
+                ["Biggest improvement vs last month", "—"],
+                ["Biggest regression vs last month",  "—"],
+                ["Backends tested",                 str(_n_tested)],
+                ["Backends skipped",                str(_n_skipped)],
+                ["Total probes run",                str(_total_probes)],
+                ["Report generated",                _ts_str],
+                ["Run ID",                          run_id],
+            ]
+            tldr_tbl = Table(tldr_rows, colWidths=[70 * mm, 95 * mm])
+            tldr_tbl.setStyle(TableStyle(_base_style(2)))
+            story.append(tldr_tbl)
+            story.append(Spacer(1, 5 * mm))
 
-            story.append(Paragraph("Category Winners", H2))
-            winner_rows = [["Ref", "Category", "Winner"]]
-            tie_footnotes = []
-            for ref in sorted(report.category_winners.keys()):
-                info = report.category_winners[ref]
-                winner_name = info["winner"].replace("_", " ")
-                if info.get("tiebreaker") == "latency" and len(info.get("tied_backends", [])) > 1:
-                    winner_rows.append([ref, _OWASP_LABELS.get(ref, ref), f"{winner_name}*"])
-                    tie_footnotes.append(
-                        f"* {ref}: Tiebreaker by latency — "
-                        f"{winner_name} ({info['winner_latency_ms']} ms) wins among: "
-                        + ", ".join(b.replace("_", " ") for b in info["tied_backends"])
+            # ── Overall Comparison ────────────────────────────────────────────
+            story.append(Paragraph("Overall Comparison", H2))
+            ov_rows = [["Backend", "Overall %", "vs Last Month", "Best Category", "Worst Category", "Avg Latency"]]
+            for _b in report.backends_tested:
+                _bval = _backend_str(_b)
+                if _bval in report.skipped_backends:
+                    ov_rows.append([_bval, f"SKIPPED ({report.skipped_backends[_bval]})", "—", "—", "—", "—"])
+                    continue
+                _r = report.reports.get(_bval)
+                if not _r:
+                    continue
+                _cat_scores = {
+                    _ref: _d.get("pass_rate", 0.0)
+                    for _ref, _d in _r.results_by_category.items()
+                    if _ref.startswith("LLM")
+                }
+                _best_cat = max(_cat_scores, key=lambda _k: _cat_scores[_k]) if _cat_scores else "—"
+                _worst_cat = min(_cat_scores, key=lambda _k: _cat_scores[_k]) if _cat_scores else "—"
+                ov_rows.append([
+                    _bval,
+                    f"{_r.pass_rate * 100:.1f}%",
+                    "—",
+                    _best_cat,
+                    _worst_cat,
+                    f"{_r.average_latency_ms:.0f} ms",
+                ])
+            ov_tbl = Table(ov_rows, colWidths=[35 * mm, 20 * mm, 22 * mm, 22 * mm, 24 * mm, 22 * mm])
+            ov_style = _base_style(6)
+            for _i, _row in enumerate(ov_rows[1:], 1):
+                if "%" in _row[1] and "SKIPPED" not in _row[1]:
+                    try:
+                        _rate = float(_row[1].rstrip("%").rstrip(" %")) / 100
+                        ov_style += [
+                            ("TEXTCOLOR", (1, _i), (1, _i), _pass_color(_rate)),
+                            ("FONTNAME",  (1, _i), (1, _i), "Helvetica-Bold"),
+                        ]
+                    except ValueError:
+                        pass
+            ov_tbl.setStyle(TableStyle(ov_style))
+            story.append(ov_tbl)
+            story.append(Spacer(1, 5 * mm))
+
+            # ── Per-Category Results (OWASP LLM Top 10) ──────────────────────
+            story.append(Paragraph("Per-Category Results (OWASP LLM Top 10)", H2))
+            _active_rpts = {
+                _bname: _r
+                for _bname, _r in report.reports.items()
+                if _bname not in report.skipped_backends
+            }
+            pcat_rows = [["Ref", "Description", "Winner", "Score", "Runner-up", "Score"]]
+            for _ref in [f"LLM{_i:02d}" for _i in range(1, 11)]:
+                _scores = sorted(
+                    (
+                        (_bname, _r.results_by_category.get(_ref, {}).get("pass_rate", 0.0))
+                        for _bname, _r in _active_rpts.items()
+                    ),
+                    key=lambda _x: _x[1],
+                    reverse=True,
+                )
+                _w = _scores[0][0] if _scores else "—"
+                _ws = f"{_scores[0][1] * 100:.0f}%" if _scores else "—"
+                _ru = _scores[1][0] if len(_scores) > 1 else "—"
+                _rus = f"{_scores[1][1] * 100:.0f}%" if len(_scores) > 1 else "—"
+                pcat_rows.append([_ref, _OWASP_LABELS.get(_ref, _ref), _w, _ws, _ru, _rus])
+            pcat_tbl = Table(pcat_rows, colWidths=[14 * mm, 44 * mm, 35 * mm, 16 * mm, 35 * mm, 16 * mm])
+            pcat_tbl.setStyle(TableStyle(_base_style(6)))
+            story.append(pcat_tbl)
+            story.append(Spacer(1, 5 * mm))
+
+            # ── Content Moderation Results ────────────────────────────────────
+            story.append(Paragraph("Content Moderation Results", H2))
+            _CM_RANGES = {"Hate": (1, 5), "Violence": (6, 10), "Sexual": (11, 15), "Self-Harm": (16, 20)}
+
+            def _cm_num(_pid: str):
+                if _pid.startswith("CM-"):
+                    try:
+                        return int(_pid[3:])
+                    except ValueError:
+                        pass
+                return None
+
+            cm_rows = [["Backend", "Hate", "Violence", "Sexual", "Self-Harm", "Overall CM"]]
+            for _b in report.backends_tested:
+                _bval = _backend_str(_b)
+                if _bval in report.skipped_backends:
+                    cm_rows.append([_bval, "—", "—", "—", "—", "SKIPPED"])
+                    continue
+                _r = report.reports.get(_bval)
+                if not _r:
+                    continue
+                _cm_prs = [_pr for _pr in _r.probe_results if _cm_num(_pr.probe.id) is not None]
+                if not _cm_prs:
+                    cm_rows.append([_bval, "—", "—", "—", "—", "—"])
+                    continue
+                _cats: Dict[str, str] = {}
+                for _cn, (_lo, _hi) in _CM_RANGES.items():
+                    _bkt = [_pr for _pr in _cm_prs if _lo <= (_cm_num(_pr.probe.id) or 0) <= _hi]
+                    _cats[_cn] = (
+                        f"{sum(1 for _pr in _bkt if _pr.passed is True) / len(_bkt) * 100:.0f}%"
+                        if _bkt else "—"
                     )
+                _cm_overall = f"{sum(1 for _pr in _cm_prs if _pr.passed is True) / len(_cm_prs) * 100:.0f}%"
+                cm_rows.append([
+                    _bval,
+                    _cats["Hate"], _cats["Violence"], _cats["Sexual"], _cats["Self-Harm"],
+                    _cm_overall,
+                ])
+            cm_tbl = Table(cm_rows, colWidths=[35 * mm, 18 * mm, 20 * mm, 18 * mm, 23 * mm, 22 * mm])
+            cm_tbl.setStyle(TableStyle(_base_style(6)))
+            story.append(cm_tbl)
+            story.append(Spacer(1, 5 * mm))
+
+            # ── Backend Capability Matrix ─────────────────────────────────────
+            story.append(Paragraph("Backend Capability Matrix", H2))
+            cap_rows = [
+                ["Backend",              "Prompt Injection", "Jailbreak", "Content Mod.", "PII Detection", "Agentic Safety"],
+                ["NeMo Guardrails",      "Primary",         "Yes",       "No",           "No",            "Yes"],
+                ["GuardrailsAI",         "Yes",             "Yes",       "No",           "Yes",           "No"],
+                ["Presidio",             "No",              "No",        "No",           "Primary",       "No"],
+                ["Lakera Guard",         "Primary",         "Yes",       "No",           "No",            "No"],
+                ["Custom HTTP",          "Yes",             "Yes",       "No",           "No",            "No"],
+                ["OpenAI Moderation",    "No",              "Yes",       "Primary",      "No",            "No"],
+                ["Azure Content Safety", "No",              "No",        "Primary",      "No",            "No"],
+                ["Azure Prompt Shields", "Primary",         "Yes",       "No",           "No",            "No"],
+                ["AWS Bedrock",          "Yes",             "Yes",       "Yes",          "No",            "No"],
+                ["Llama Firewall",       "Primary",         "Yes",       "No",           "No",            "No"],
+                ["LLM Guard",            "Yes",             "Yes",       "Yes",          "Yes",           "No"],
+            ]
+            cap_tbl = Table(cap_rows, colWidths=[36 * mm, 26 * mm, 20 * mm, 22 * mm, 22 * mm, 24 * mm])
+            cap_tbl.setStyle(TableStyle(_base_style(6)))
+            story.append(cap_tbl)
+            story.append(Spacer(1, 2 * mm))
+            story.append(Paragraph("Primary = core strength  |  Yes = supported  |  No = not designed for this", BL))
+            story.append(Spacer(1, 5 * mm))
+
+            # ── Accuracy vs Latency Tradeoff ──────────────────────────────────
+            story.append(Paragraph("Accuracy vs Latency Tradeoff", H2))
+            _lat_sorted = sorted(
+                (
+                    (_bname, _r)
+                    for _bname, _r in report.reports.items()
+                    if _bname not in report.skipped_backends and _r.total_probes > 0
+                ),
+                key=lambda _x: _x[1].average_latency_ms,
+            )
+            lat_rows = [["Backend", "Overall %", "Avg Latency", "Latency Category", "Recommended For"]]
+            for _bname, _r in _lat_sorted:
+                _ms = _r.average_latency_ms
+                if _ms < 10:
+                    _lcat, _rec = "Ultra-fast", "Real-time, high-throughput pipelines"
+                elif _ms < 200:
+                    _lcat, _rec = "Fast", "Standard API protection"
+                elif _ms < 1000:
+                    _lcat, _rec = "Moderate", "Batch processing, async pipelines"
                 else:
-                    winner_rows.append([ref, _OWASP_LABELS.get(ref, ref), winner_name])
-            winner_tbl = Table(winner_rows, colWidths=[16 * mm, 60 * mm, 60 * mm])
-            winner_tbl.setStyle(TableStyle(_base_style(3)))
-            story.append(winner_tbl)
-            if tie_footnotes:
-                story.append(Spacer(1, 2 * mm))
-                for note in tie_footnotes:
-                    story.append(Paragraph(note, BL))
+                    _lcat, _rec = "Slow", "Offline analysis, compliance audits"
+                lat_rows.append([_bname, f"{_r.pass_rate * 100:.1f}%", f"{_ms:.0f} ms", _lcat, _rec])
+            lat_tbl = Table(lat_rows, colWidths=[32 * mm, 20 * mm, 22 * mm, 24 * mm, 62 * mm])
+            lat_tbl.setStyle(TableStyle(_base_style(5)))
+            story.append(lat_tbl)
+            story.append(Spacer(1, 5 * mm))
+
+            # ── Notable Bypasses ──────────────────────────────────────────────
+            story.append(Paragraph("Notable Bypasses", H2))
+            _active_bnames = [
+                _bname for _bname in report.reports
+                if _bname not in report.skipped_backends
+            ]
+            _failed_on: Dict[str, set] = {}
+            _probe_meta: Dict[str, Dict] = {}
+            for _bname in _active_bnames:
+                for _pr in report.reports[_bname].probe_results:
+                    if _pr.passed is False:
+                        _failed_on.setdefault(_pr.probe.id, set()).add(_bname)
+                        _probe_meta[_pr.probe.id] = {
+                            "owasp_ref": _pr.probe.owasp_ref,
+                            "severity":  _pr.probe.severity,
+                        }
+            _n_active = len(_active_bnames)
+            _bypass_groups: Dict[tuple, int] = {}
+            for _pid, _bset in _failed_on.items():
+                if len(_bset) == _n_active:
+                    _m = _probe_meta[_pid]
+                    _key = (_m["owasp_ref"], _m["severity"])
+                    _bypass_groups[_key] = _bypass_groups.get(_key, 0) + 1
+            if _bypass_groups:
+                bypass_rows = [["OWASP Category", "Severity", "Count"]]
+                for (_ref, _sev), _cnt in sorted(_bypass_groups.items()):
+                    bypass_rows.append([_ref, _sev, str(_cnt)])
+                bypass_tbl = Table(bypass_rows, colWidths=[55 * mm, 35 * mm, 25 * mm])
+                bypass_tbl.setStyle(TableStyle(_base_style(3)))
+                story.append(bypass_tbl)
+            else:
+                story.append(Paragraph(
+                    "No universal bypasses detected — or probe results not available for this regenerated report.",
+                    BL,
+                ))
+            story.append(Spacer(1, 5 * mm))
+
+            # ── Backends Skipped This Month ───────────────────────────────────
+            story.append(Paragraph("Backends Skipped This Month", H2))
+            skip_rows = [["Backend", "Reason", "Expected In"]]
+            if report.skipped_backends:
+                for _bname, _reason in report.skipped_backends.items():
+                    _exp = (
+                        "Set GA_GUARD_API_URL"
+                        if _reason == "CUSTOM_ENDPOINT_NOT_CONFIGURED"
+                        else "Configure credentials"
+                    )
+                    skip_rows.append([_bname, _reason, _exp])
+            else:
+                skip_rows.append(["—", "—", "—"])
+            skip_tbl = Table(skip_rows, colWidths=[40 * mm, 65 * mm, 60 * mm])
+            skip_tbl.setStyle(TableStyle(_base_style(3)))
+            story.append(skip_tbl)
+            story.append(Spacer(1, 5 * mm))
+
+            # ── Month-over-Month Changes ──────────────────────────────────────
+            story.append(Paragraph("Month-over-Month Changes", H2))
+            story.append(Paragraph(
+                "First benchmark — no prior month comparison available.",
+                BL,
+            ))
+            story.append(Spacer(1, 5 * mm))
+
+            # ── How to Reproduce ──────────────────────────────────────────────
+            story.append(Paragraph("How to Reproduce", H2))
+            _yr = ts.year if hasattr(ts, "year") else "????"
+            _mo = ts.month if hasattr(ts, "month") else "??"
+            story.append(Paragraph(
+                f"pip install guardrailprobe<br/>"
+                f"guardrailprobe run --year {_yr} --month {_mo}<br/><br/>"
+                f"Full guide: github.com/askuma/guardrailprobe/blob/main/METHODOLOGY.md",
+                BL,
+            ))
 
         # Independence Statement
         story.append(Spacer(1, 8 * mm))

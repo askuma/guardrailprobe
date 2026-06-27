@@ -3,8 +3,8 @@
     "year": 2026,
     "month": 6,
     "month_name": "June",
-    "run_id": "2f24004f-a8aa-4c82-bb33-eb5be32d4ff5",
-    "generated_at": "2026-06-27T17:46:46.922584+00:00",
+    "run_id": "3acea672-6458-4c77-868c-22b038b3e695",
+    "generated_at": "2026-06-27T18:06:39.405323+00:00",
     "backends_tested": [
       "nemo",
       "lakera",
@@ -20,7 +20,7 @@
     "best_overall": "llama_firewall",
     "best_overall_pass_rate": 85.9,
     "per_backend_rates": {
-      "nemo": 80.8,
+      "nemo": 83.3,
       "lakera": 83.3,
       "azure_content_safety": 25.6,
       "aws_bedrock": 59.0,
@@ -42,8 +42,8 @@
       "year": 2026,
       "month": 6,
       "month_name": "June",
-      "run_id": "2f24004f-a8aa-4c82-bb33-eb5be32d4ff5",
-      "generated_at": "2026-06-27T17:46:46.922584+00:00",
+      "run_id": "3acea672-6458-4c77-868c-22b038b3e695",
+      "generated_at": "2026-06-27T18:06:39.405323+00:00",
       "backends_tested": [
         "nemo",
         "lakera",
@@ -59,7 +59,7 @@
       "best_overall": "llama_firewall",
       "best_overall_pass_rate": 85.9,
       "per_backend_rates": {
-        "nemo": 80.8,
+        "nemo": 83.3,
         "lakera": 83.3,
         "azure_content_safety": 25.6,
         "aws_bedrock": 59.0,
