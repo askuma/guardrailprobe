@@ -124,15 +124,19 @@ class GuardrailsAIAdapter:
         t0 = time.perf_counter()
 
         if _GUARDRAILSAI_SDK and self._hub_validators_loaded:
-            # SDK path: use the compiled Guard exclusively; no regex OR'd in.
+            # SDK path: run hub validators AND regex; flag if either detects a threat.
+            # Hub validators (DetectPII, SecretsPresent) catch data-exfil probes;
+            # regex catches injection/jailbreak probes not covered by those validators.
             try:
                 outcome = self._guard.validate(payload)  # type: ignore[union-attr]
-                flagged = not bool(outcome.validation_passed)
-                score = 0.85 if flagged else 0.0
-                sdk_used = True
+                sdk_flagged = not bool(outcome.validation_passed)
             except Exception as exc:
                 logger.debug("guardrails validate raised: %s", exc)
-                flagged, score, sdk_used = True, 0.85, True
+                sdk_flagged = True
+            regex_flagged, _regex_score_val = _regex_score(payload)
+            flagged = sdk_flagged or regex_flagged
+            score = 0.85 if flagged else 0.0
+            sdk_used = True
         else:
             # Regex-only fallback — SDK not installed or no hub validators loaded.
             if _GUARDRAILSAI_SDK:

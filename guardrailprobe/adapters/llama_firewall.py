@@ -10,12 +10,12 @@ Model:    meta-llama/Llama-Prompt-Guard-2-86M (gated — accept license on Huggi
 
 from __future__ import annotations
 
-import asyncio
 import importlib.util
 import logging
 import os
+import threading
 import time
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from guardrailprobe._types import ActionType, AdapterStatus, ProbeResponse
 
@@ -24,6 +24,15 @@ logger = logging.getLogger(__name__)
 _LLAMAFIREWALL_SDK: bool = importlib.util.find_spec("llamafirewall") is not None
 
 _MODEL_ID = "meta-llama/Llama-Prompt-Guard-2-86M"
+
+# Cache the first scan error so subsequent probes skip model loading and
+# fail-closed immediately rather than re-attempting on every probe.
+_scan_error: Optional[str] = None
+
+# Cached LlamaFirewall instance — loaded once on first probe to avoid
+# reloading the 86M model from disk for every single probe call.
+_lf_instance: Optional[Any] = None
+_lf_lock = threading.Lock()
 
 
 def _hf_token() -> str:
@@ -60,31 +69,35 @@ class LlamaFirewallAdapter:
             "--target ./site-packages --ignore-installed"
         )
 
+    def _get_lf(self):
+        """Return a cached LlamaFirewall instance (loads model on first call)."""
+        global _lf_instance
+        if _lf_instance is None:
+            with _lf_lock:
+                if _lf_instance is None:
+                    from llamafirewall import LlamaFirewall  # noqa: PLC0415
+                    token = _hf_token()
+                    if token:
+                        os.environ.setdefault("HF_TOKEN", token)
+                    _lf_instance = LlamaFirewall()
+        return _lf_instance
+
     def _scan(self, payload: str):
-        from llamafirewall import LlamaFirewall, UserMessage  # noqa: PLC0415
+        from llamafirewall import UserMessage  # noqa: PLC0415
 
-        token = _hf_token()
-        if token:
-            os.environ.setdefault("HF_TOKEN", token)
+        lf = self._get_lf()
 
-        async def _run():
-            return await LlamaFirewall().scan(UserMessage(content=payload))
-
-        try:
-            return asyncio.run(_run())
-        except RuntimeError as exc:
-            # Only retry via ThreadPoolExecutor for event-loop conflicts
-            # (e.g. running inside FastAPI/Uvicorn where the loop is already running).
-            # Any other RuntimeError (e.g. PyTorch meta tensor errors) must propagate
-            # so run_probe's except catches it quickly instead of waiting 60 s × N probes.
-            _msg = str(exc).lower()
-            if "event loop" not in _msg and "cannot run nested" not in _msg:
-                raise
-            import concurrent.futures  # noqa: PLC0415
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                return pool.submit(asyncio.run, _run()).result(timeout=30)
+        # lf.scan() is synchronous but internally calls asyncio.run() for each scanner.
+        # Run it in a dedicated fresh thread so there is no running event loop in that
+        # thread, which would cause "asyncio.run() cannot be called from a running event
+        # loop" when the benchmark thread pool reuses threads from NeMo's asyncio.run().
+        import concurrent.futures  # noqa: PLC0415
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(lf.scan, UserMessage(content=payload)).result(timeout=60)
 
     def run_probe(self, payload: str) -> ProbeResponse:
+        global _scan_error
+
         if not _LLAMAFIREWALL_SDK:
             return ProbeResponse(
                 action=ActionType.SKIPPED,
@@ -95,20 +108,35 @@ class LlamaFirewallAdapter:
                 status_message=self.missing_credential_message(),
             )
 
+        # If a previous probe already failed to load the model, skip the
+        # expensive scan attempt and fail-closed immediately.
+        if _scan_error is not None:
+            return ProbeResponse(
+                action=ActionType.BLOCK,
+                latency_ms=0.1,
+                raw_response={"error": _scan_error, "cached_failure": True},
+                backend=self.backend_name,
+                status=AdapterStatus.ERROR,
+                status_message=_scan_error,
+            )
+
         t0 = time.perf_counter()
         try:
             result = self._scan(payload)
         except Exception as exc:
             latency = (time.perf_counter() - t0) * 1000
-            logger.error("LlamaFirewall error: %s", exc)
+            err_str = str(exc)[:200]
+            # Cache the error so remaining probes skip model loading.
+            _scan_error = err_str
+            logger.error("LlamaFirewall error (will skip model load for remaining probes): %s", exc)
             # Fail-closed: any scan failure is treated as a detected threat.
             return ProbeResponse(
                 action=ActionType.BLOCK,
                 latency_ms=latency,
-                raw_response={"error": str(exc)},
+                raw_response={"error": err_str},
                 backend=self.backend_name,
                 status=AdapterStatus.ERROR,
-                status_message=str(exc),
+                status_message=err_str,
             )
 
         latency = (time.perf_counter() - t0) * 1000

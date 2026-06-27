@@ -66,4 +66,19 @@ else
     echo "[guardrailprobe] To enable: python3.12 -m pip install llamafirewall llm-guard --target ./site-packages --ignore-installed"
 fi
 
+# GuardrailsAI hub validators — install at runtime using GUARDRAILS_TOKEN.
+# The adapter falls back to built-in regex patterns when hub validators are absent.
+if python -c "import guardrails" 2>/dev/null && [ -n "${GUARDRAILS_TOKEN:-}" ]; then
+    if ! python -c "
+import guardrails.hub as h; import sys
+sys.exit(0 if getattr(h, 'DetectPII', None) is not None else 1)
+" 2>/dev/null; then
+        echo "[guardrailprobe] Installing GuardrailsAI hub validators..."
+        guardrails configure --enable-metrics=false --token "${GUARDRAILS_TOKEN}" --quiet 2>/dev/null || true
+        guardrails hub install hub://guardrails/detect_pii --quiet 2>/dev/null || true
+        guardrails hub install hub://guardrails/secrets_present --quiet 2>/dev/null || true
+        echo "[guardrailprobe] GuardrailsAI hub install done."
+    fi
+fi
+
 exec "$@"

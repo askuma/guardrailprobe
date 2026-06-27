@@ -56,3 +56,4 @@ reports/*.md
 # Install with: pip install llamafirewall llm-guard --target ./site-packages
 # Pattern without trailing slash matches both a real directory and a symlink.
 site-packages
+hf_cache

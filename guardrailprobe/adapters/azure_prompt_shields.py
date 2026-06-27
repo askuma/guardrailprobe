@@ -55,11 +55,13 @@ class AzurePromptShieldsAdapter:
         )
         t0 = time.perf_counter()
 
+        # Azure Prompt Shields enforces a 10 000-character limit on userPrompt.
+        send_payload = payload[:10000]
         for attempt in range(2):
             try:
                 resp = httpx.post(
                     url,
-                    json={"userPrompt": payload, "documents": []},
+                    json={"userPrompt": send_payload, "documents": []},
                     headers={"Ocp-Apim-Subscription-Key": self._api_key()},
                     timeout=30.0,
                 )

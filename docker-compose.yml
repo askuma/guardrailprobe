@@ -10,7 +10,8 @@ services:
     build:
       context: .
       args:
-        SKIP_SPACY: ${SKIP_SPACY:-0}   # set to 1 to skip spaCy model download
+        SKIP_SPACY: ${SKIP_SPACY:-0}          # set to 1 to skip spaCy model download
+        GUARDRAILS_TOKEN: ${GUARDRAILS_TOKEN:-} # authenticates hub validator install
     image: guardrailprobe:0.1.0
     container_name: guardrailprobe
     ports:
@@ -39,15 +40,21 @@ services:
       - AWS_BEDROCK_GUARDRAIL_ID=${AWS_BEDROCK_GUARDRAIL_ID:-}
       - AWS_BEDROCK_GUARDRAIL_VERSION=${AWS_BEDROCK_GUARDRAIL_VERSION:-DRAFT}
 
-      # ── NeMo LLM provider — first non-empty key wins (see .env.example) ──
+      # ── NeMo LLM provider — priority: NEMO_OPENAI_API_KEY → AWS Bedrock → OPENROUTER → OPENAI ──
       # Without any key NeMo runs in colang pattern-matching mode (no API calls).
-      # OPENAI_API_KEY above is reused automatically. NEMO_OPENAI_API_KEY is an
-      # accepted alias (useful when OPENAI_API_KEY is reserved for another service).
+      # NEMO_OPENAI_API_KEY: explicit NeMo-only OpenAI key (highest priority).
+      # AWS Bedrock:         uses existing AWS_ACCESS_KEY_ID/SECRET creds — no per-minute
+      #                      rate limits, recommended when AWS credentials are available.
+      # NEMO_BEDROCK_MODEL:  Bedrock model for NeMo (default: us.meta.llama3-3-70b-instruct-v1:0).
+      # OPENROUTER_API_KEY:  free-tier fallback (16 req/min limit — may rate-limit benchmarks).
+      # OPENAI_API_KEY:      used as final fallback if nothing else is available.
+      - NEMOGUARDRAILS_LLM_FRAMEWORK=langchain
       - NEMO_OPENAI_API_KEY=${NEMO_OPENAI_API_KEY:-}
       - NEMO_OPENAI_MODEL=${NEMO_OPENAI_MODEL:-gpt-4o-mini}
-      # OpenRouter — free-tier OpenAI-compatible gateway (recommended)
+      - NEMO_BEDROCK_MODEL=${NEMO_BEDROCK_MODEL:-amazon.nova-pro-v1:0}
+      # OpenRouter — free-tier OpenAI-compatible gateway (recommended for NeMo)
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
-      - OPENROUTER_MODEL=${OPENROUTER_MODEL:-meta-llama/llama-3.1-8b-instruct:free}
+      - OPENROUTER_MODEL=${OPENROUTER_MODEL:-nvidia/nemotron-3-nano-30b-a3b:free}
       # Azure OpenAI (alternative to OPENAI_API_KEY / OpenRouter)
       - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY:-}
       - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT:-}
@@ -87,9 +94,10 @@ services:
       # If ./site-packages is empty, the entrypoint skips it gracefully.
       #   pip install llamafirewall llm-guard --target ./site-packages
       - ./site-packages:/app/site-packages:ro
-      # HuggingFace model cache — share the host cache so models downloaded
-      # outside Docker (or on first container run) are reused without re-downloading.
-      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+      # HuggingFace model cache — stored alongside ./site-packages so all
+      # ML assets live in the project directory, not in the user's home.
+      # Create it first: mkdir -p ./hf_cache
+      - ./hf_cache:/home/guardrailprobe/.cache/huggingface
 
     dns:
       - 8.8.8.8

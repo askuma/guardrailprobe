@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 _LLM_GUARD_SDK: bool = importlib.util.find_spec("llm_guard") is not None
 
 _scanners: Optional[List[Any]] = None
+_scanners_init_done: bool = False
 _scanners_lock = threading.Lock()
 
 # ── Pattern-based pre-scanner ─────────────────────────────────────────────────
@@ -126,11 +127,11 @@ def _pattern_scan(payload: str) -> Optional[Tuple[str, float]]:
 
 
 def _get_scanners() -> Optional[List[Any]]:
-    global _scanners
-    if _scanners is not None:
+    global _scanners, _scanners_init_done
+    if _scanners_init_done:
         return _scanners
     with _scanners_lock:
-        if _scanners is not None:
+        if _scanners_init_done:
             return _scanners
         # Force CPU: the PyTorch in site-packages may have a CUDA version mismatch
         # with the host GPU. LLM Guard on CPU gives reliable 200-700ms latency.
@@ -146,6 +147,7 @@ def _get_scanners() -> Optional[List[Any]]:
             loaded.append(Toxicity())
         except Exception as exc:
             logger.warning("LLM Guard Toxicity unavailable: %s", exc)
+        _scanners_init_done = True
         if not loaded:
             logger.error("LLM Guard: no scanners could be loaded")
             return None
