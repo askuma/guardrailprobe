@@ -51,7 +51,7 @@ from guardrailprobe.adapters import REGISTRY
 from guardrailprobe.probes import AttackCategory, AttackProbe, ProbeLibrary
 
 _BACKEND_TIMEOUT_SECS = 600  # 10 min: LLM Guard / LlamaFirewall need time to load models
-_PROBE_WORKERS = 3
+_PROBE_WORKERS = 5
 
 logger = logging.getLogger("RedTeamRunner")
 

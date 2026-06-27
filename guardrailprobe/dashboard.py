@@ -512,7 +512,7 @@ _INDEX_HTML = """<!DOCTYPE html>
 
   // ── Backend metadata for overlay animation and comparison table ──────────────
   const BK_META = {
-    nemo:                 {label:'NeMo Guardrails',      color:'#22d3ee', eta:18,  dur:1.7, type:'general'},
+    nemo:                 {label:'NeMo Guardrails',      color:'#22d3ee', eta:680, dur:1.7, type:'general'},
     guardrails_ai:        {label:'GuardrailsAI',          color:'#a78bfa', eta:28,  dur:2.1, type:'specialized'},
     presidio:             {label:'Presidio',              color:'#fb923c', eta:12,  dur:1.9, type:'specialized'},
     lakera:               {label:'Lakera Guard',          color:'#4ade80', eta:35,  dur:2.3, type:'general'},
@@ -544,8 +544,9 @@ _INDEX_HTML = """<!DOCTYPE html>
   let _allBackends = [];
 
   const SETUP_GUIDE = {
-    nemo:                { vars: ['OPENAI_API_KEY  (or OPENROUTER_API_KEY / ANTHROPIC_API_KEY)'],
-                           note: 'NeMo SDK is bundled — just add one LLM key.' },
+    nemo:                { vars: ['AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY  (recommended — uses Bedrock Nova Pro, no rate limits)',
+                                  'OPENAI_API_KEY  (or NEMO_OPENAI_API_KEY / OPENROUTER_API_KEY)'],
+                           note: 'NeMo SDK is bundled. AWS Bedrock is used when AWS credentials are present (priority over OpenRouter).' },
     aws_bedrock:         { vars: ['AWS_BEDROCK_GUARDRAIL_ID', 'AWS_DEFAULT_REGION',
                                   'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY'],
                            note: 'boto3 is bundled.' },
@@ -725,7 +726,7 @@ _INDEX_HTML = """<!DOCTYPE html>
       const ss = String(elapsed % 60).padStart(2, '0');
       $('ov-timer').textContent = `${mm}:${ss}`;
 
-      const TOTAL_EST = 115;
+      const TOTAL_EST = 720;
       const progressPct = Math.min(Math.round((elapsed / TOTAL_EST) * 100), 99);
       $('ov-bar').style.width = progressPct + '%';
       $('ov-pct').textContent = progressPct + '%';
@@ -811,6 +812,24 @@ _INDEX_HTML = """<!DOCTYPE html>
       const total = status.total || 0;
       fill.style.width     = pct + '%';
       progText.textContent = total > 0 ? `${done} / ${total} probes  (${pct}%)` : 'Running…';
+      // Drive the overlay bar from real probe progress (overrides timer estimate)
+      if (pct > 0) { $('ov-bar').style.width = pct + '%'; $('ov-pct').textContent = pct + '%'; }
+      // Mark individual backends as done when their probes are complete
+      if (status.backends) {
+        bkList.forEach((b, i) => {
+          const bs = status.backends[b.name];
+          if (bs && bs.done >= bs.total && bs.total > 0) {
+            const dot = $('ovd-' + i); const st = $('ovs-' + i);
+            if (dot && dot.style.animation !== 'none') {
+              dot.style.animation = 'none'; dot.style.left = '0'; dot.style.width = '100%';
+              dot.style.background = (b.color || '#94a3b8') + '55'; dot.style.boxShadow = 'none';
+            }
+            if (st && st.textContent !== 'done') {
+              st.style.animation = 'none'; st.style.color = 'rgba(255,255,255,0.3)'; st.textContent = 'done';
+            }
+          }
+        });
+      }
 
       if (status.status === 'complete') {
         hideOverlay();

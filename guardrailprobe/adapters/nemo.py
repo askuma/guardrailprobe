@@ -39,11 +39,21 @@ logger = logging.getLogger(__name__)
 
 _NEMO_SDK: bool = importlib.util.find_spec("nemoguardrails") is not None
 
-# Rate-limit gate: nvidia/nemotron-3-nano-30b-a3b:free caps at 16 req/min.
-# Enforce a 4-second minimum gap between LLM calls → ~14 req/min, safely under cap.
+# Rate-limit gate: only needed for OpenRouter/OpenAI free-tier (16 req/min hard cap).
+# Bedrock uses TPS-based throttling that boto3 handles via automatic exponential-backoff
+# retries — no sleep needed, and sleeping here just serialises the 5-worker thread pool.
 _NEMO_RATE_LOCK = threading.Lock()
 _NEMO_LAST_CALL_TS: float = 0.0
-_NEMO_MIN_CALL_GAP: float = 6.0
+_NEMO_MIN_CALL_GAP: float = 4.0  # seconds; applied only for non-Bedrock providers
+
+# For Bedrock: stagger probe STARTS by 3 seconds so multiple probes can be in-flight
+# simultaneously without bursting the model's TPS quota.  Simultaneous starts caused
+# 4-6 API calls to fire at once → ThrottlingException → boto3 retries exhausted the
+# 30s asyncio timeout.  With a 3s start gap at most 2 probes overlap, keeping the
+# burst ≤2 TPS.  Expected wall time: 78 probes × 3s ≈ 4 minutes.
+_NEMO_BEDROCK_START_LOCK = threading.Lock()
+_NEMO_BEDROCK_LAST_START: float = 0.0
+_NEMO_BEDROCK_START_GAP: float = 3.0  # seconds between probe starts
 
 _NEMO_REFUSAL_RE = re.compile(
     r"I('m| am) (sorry|unable|not able to)|"
@@ -362,14 +372,24 @@ models:
                     timeout=30.0,
                 )
 
-            # Rate-gate: enforce minimum gap between LLM calls to stay under
-            # nvidia/nemotron-3-nano-30b-a3b:free 16-req/min cap.
-            global _NEMO_LAST_CALL_TS
-            with _NEMO_RATE_LOCK:
-                elapsed = time.perf_counter() - _NEMO_LAST_CALL_TS
-                if elapsed < _NEMO_MIN_CALL_GAP:
-                    time.sleep(_NEMO_MIN_CALL_GAP - elapsed)
-                _NEMO_LAST_CALL_TS = time.perf_counter()
+            _bedrock_active = "engine: bedrock" in nemo_yaml
+            if not _bedrock_active:
+                # OpenRouter / OpenAI free tier: enforce minimum gap between calls.
+                global _NEMO_LAST_CALL_TS
+                with _NEMO_RATE_LOCK:
+                    elapsed = time.perf_counter() - _NEMO_LAST_CALL_TS
+                    if elapsed < _NEMO_MIN_CALL_GAP:
+                        time.sleep(_NEMO_MIN_CALL_GAP - elapsed)
+                    _NEMO_LAST_CALL_TS = time.perf_counter()
+            else:
+                # Bedrock: stagger probe starts so overlapping probes don't burst the
+                # model's TPS quota.  Probes may still overlap — we only gate the start.
+                global _NEMO_BEDROCK_LAST_START
+                with _NEMO_BEDROCK_START_LOCK:
+                    elapsed = time.perf_counter() - _NEMO_BEDROCK_LAST_START
+                    if elapsed < _NEMO_BEDROCK_START_GAP:
+                        time.sleep(_NEMO_BEDROCK_START_GAP - elapsed)
+                    _NEMO_BEDROCK_LAST_START = time.perf_counter()
 
             try:
                 response = asyncio.run(_run())

@@ -9,11 +9,11 @@
 - **Best accuracy/latency ratio:** llm_guard
 - **Biggest improvement vs last month:** none this month +0.0%
 - **Biggest regression vs last month:** none this month -0.0%
-- **Backends tested:** 11
-- **Backends skipped:** 1
+- **Backends tested:** 10
+- **Backends skipped:** 0
 - **Total probes run:** 682
-- **Report generated:** 2026-06-27 10:04 UTC
-- **Run ID:** 362a0490-b65e-4ed6-a05f-95bd4f66cae8
+- **Report generated:** 2026-06-27 13:57 UTC
+- **Run ID:** e60fbe7e-ef64-47dc-b6dd-a5bd4a320b4b
 
 ---
 
@@ -21,17 +21,16 @@
 
 | Backend | Overall % | vs Last Month | Best Category | Worst Category | Avg Latency |
 |---------|:---------:|:-------------:|:-------------:|:--------------:|:-----------:|
-| nemo | 82.0% | — | LLM01 | LLM10 | 17726 ms |
-| guardrails_ai | 2.6% | — | LLM01 | LLM04 | 0 ms |
-| presidio | 6.4% | — | LLM02 | LLM01 | 599 ms |
-| lakera | 83.3% | — | LLM01 | LLM10 | 634 ms |
-| openai_moderation | 100.0% | — | LLM01 | LLM01 | 36575 ms |
-| azure_content_safety | 25.6% | — | LLM02 | LLM01 | 880 ms |
-| azure_prompt_shields | 24.4% | — | LLM01 | LLM09 | 750 ms |
-| aws_bedrock | 59.0% | — | LLM01 | LLM10 | 502 ms |
-| llama_firewall | 85.9% | — | LLM01 | LLM10 | 779 ms |
+| nemo | 83.3% | — | LLM01 | LLM10 | 17932 ms |
+| lakera | 83.3% | — | LLM01 | LLM10 | 445 ms |
+| azure_content_safety | 25.6% | — | LLM02 | LLM01 | 472 ms |
+| aws_bedrock | 59.0% | — | LLM01 | LLM10 | 496 ms |
+| llama_firewall | 85.9% | — | LLM01 | LLM10 | 1451 ms |
 | llm_guard | 80.0% | — | LLM01 | LLM10 | 0 ms |
-| ga_guard | SKIPPED (MISSING_CREDENTIALS) | — | — | — | — |
+| guardrails_ai | 2.6% | — | LLM01 | LLM06 | 0 ms |
+| presidio | 6.4% | — | LLM02 | LLM01 | 1146 ms |
+| openai_moderation | 100.0% | — | LLM01 | LLM01 | 34967 ms |
+| azure_prompt_shields | 24.4% | — | LLM01 | LLM09 | 480 ms |
 
 ---
 
@@ -41,7 +40,7 @@
 |----------|-------------|:------:|:-----:|:---------:|:-----:|
 | LLM01 | Prompt Injection | nemo | 100% | lakera | 100% |
 | LLM02 | Insecure Output | nemo | 81% | lakera | 81% |
-| LLM03 | Training Data Poisoning | lakera | 100% | aws_bedrock | 100% |
+| LLM03 | Training Data Poisoning | nemo | 100% | lakera | 100% |
 | LLM04 | Model DoS | lakera | 67% | llama_firewall | 67% |
 | LLM05 | Supply Chain | llama_firewall | 100% | llm_guard | 100% |
 | LLM06 | Sensitive Info Disclosure | nemo | 100% | lakera | 100% |
@@ -57,16 +56,15 @@
 | Backend | Hate | Violence | Sexual | Self-Harm | Overall CM Score |
 |---------|:----:|:--------:|:------:|:---------:|:----------------:|
 | nemo | 100% | 100% | 100% | 100% | 100% |
-| guardrails_ai | 0% | 0% | 0% | 0% | 0% |
-| presidio | 0% | 0% | 0% | 0% | 0% |
 | lakera | 100% | 100% | 100% | 100% | 100% |
-| openai_moderation | 0% | 0% | 0% | 0% | 0% |
 | azure_content_safety | 100% | 100% | 100% | 80% | 95% |
-| azure_prompt_shields | 0% | 0% | 0% | 0% | 0% |
 | aws_bedrock | 100% | 100% | 100% | 100% | 100% |
 | llama_firewall | 100% | 100% | 100% | 100% | 100% |
 | llm_guard | 100% | 100% | 100% | 40% | 85% |
-| ga_guard | — | — | — | — | SKIPPED |
+| guardrails_ai | 0% | 0% | 0% | 0% | 0% |
+| presidio | 0% | 0% | 0% | 0% | 0% |
+| openai_moderation | 0% | 0% | 0% | 0% | 0% |
+| azure_prompt_shields | 0% | 0% | 0% | 0% | 0% |
 
 ---
 
@@ -96,14 +94,14 @@
 |---------|:---------:|:-----------:|:----------------:|-----------------|
 | llm_guard | 80.0% | 0 ms | Ultra-fast | Real-time, high-throughput pipelines |
 | guardrails_ai | 2.6% | 0 ms | Ultra-fast | Real-time, high-throughput pipelines |
-| aws_bedrock | 59.0% | 502 ms | Moderate | Batch processing, async pipelines |
-| presidio | 6.4% | 599 ms | Moderate | Batch processing, async pipelines |
-| lakera | 83.3% | 634 ms | Moderate | Batch processing, async pipelines |
-| azure_prompt_shields | 24.4% | 750 ms | Moderate | Batch processing, async pipelines |
-| llama_firewall | 85.9% | 779 ms | Moderate | Batch processing, async pipelines |
-| azure_content_safety | 25.6% | 880 ms | Moderate | Batch processing, async pipelines |
-| nemo | 82.0% | 17726 ms | Slow | Offline analysis, compliance audits |
-| openai_moderation | 100.0% | 36575 ms | Slow | Offline analysis, compliance audits |
+| lakera | 83.3% | 445 ms | Moderate | Batch processing, async pipelines |
+| azure_content_safety | 25.6% | 472 ms | Moderate | Batch processing, async pipelines |
+| azure_prompt_shields | 24.4% | 480 ms | Moderate | Batch processing, async pipelines |
+| aws_bedrock | 59.0% | 496 ms | Moderate | Batch processing, async pipelines |
+| presidio | 6.4% | 1146 ms | Slow | Offline analysis, compliance audits |
+| llama_firewall | 85.9% | 1451 ms | Slow | Offline analysis, compliance audits |
+| nemo | 83.3% | 17932 ms | Slow | Offline analysis, compliance audits |
+| openai_moderation | 100.0% | 34967 ms | Slow | Offline analysis, compliance audits |
 
 ---
 
@@ -122,7 +120,7 @@
 
 | Backend | Reason | Expected In |
 |---------|--------|-------------|
-| ga_guard | MISSING_CREDENTIALS | Configure credentials |
+| — | — | — |
 
 ---
 
