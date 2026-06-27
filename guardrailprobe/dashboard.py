@@ -805,6 +805,15 @@ _INDEX_HTML = """<!DOCTYPE html>
       try {
         const sr = await fetch('/api/benchmark/status/' + runId);
         status = await sr.json();
+        // 404 means run_id is unknown — container restarted before the run completed
+        // or a stale run_id; treat as complete so the loop doesn't spin forever.
+        if (sr.status === 404) {
+          hideOverlay();
+          loadLatest();
+          box.style.display = 'block';
+          box.textContent = 'Benchmark complete (results reloaded from disk).';
+          break;
+        }
       } catch(_) { continue; }
 
       const pct   = status.pct  || 0;
@@ -1301,9 +1310,28 @@ def create_app() -> Flask:
     @app.get("/api/benchmark/status/<run_id>")
     def api_benchmark_status(run_id: str):
         entry = _run_status.get(run_id)
-        if entry is None:
-            return jsonify({"error": "Unknown run_id"}), 404
-        return jsonify(entry)
+        if entry is not None:
+            return jsonify(entry)
+        # run_id missing from memory — container restarted after the run completed.
+        # If the saved benchmark matches this run_id, return complete so the UI exits
+        # its polling loop instead of spinning forever.
+        from guardrailprobe.report import BenchmarkRunner  # noqa: PLC0415
+        latest = BenchmarkRunner().get_latest_benchmark()
+        if latest and latest.get("metadata", {}).get("run_id") == run_id:
+            meta = latest["metadata"]
+            return jsonify({
+                "status":   "complete",
+                "pct":      100,
+                "done":     meta.get("probe_count", 0),
+                "total":    meta.get("probe_count", 0),
+                "result": {
+                    "run_id":           run_id,
+                    "backends_tested":  meta.get("backends_tested", []),
+                    "backends_skipped": meta.get("backends_skipped", {}),
+                    "probe_count":      meta.get("probe_count", 0),
+                },
+            })
+        return jsonify({"error": "Unknown run_id"}), 404
 
     @app.get("/api/benchmark/latest")
     def api_benchmark_latest():
