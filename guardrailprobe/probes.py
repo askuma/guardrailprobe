@@ -1310,6 +1310,13 @@ class ProbeLibrary:
             raise ValueError(f"A probe with id {probe.id!r} already exists in this library.")
         self._probes.append(probe)
 
+    def remove_custom_probe(self, probe_id: str) -> bool:
+        """Remove a custom (non-builtin) probe by id. Returns True if removed."""
+        builtin_ids = {p.id for p in self.BUILTIN_PROBES}
+        before = len(self._probes)
+        self._probes = [p for p in self._probes if p.id != probe_id or p.id in builtin_ids]
+        return len(self._probes) < before
+
     def all_probes(self) -> List[AttackProbe]:
         return list(self._probes)
 

@@ -5,7 +5,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [Unreleased]
+## [0.1.1] — 2026-06-27
 
 ### Fixed
 - **NeMo — langchain dependency gap**: `nemoguardrails==0.22.0` requires

@@ -21,6 +21,7 @@ DELETE /api/probes/custom/<id> — delete a custom probe
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import threading
@@ -34,6 +35,28 @@ from jinja2 import DictLoader
 
 # Custom probes persist here (named Docker volume in production, ./reports locally).
 _CUSTOM_PROBES_FILE = Path(os.getenv("GUARDRAILPROBE_REPORTS_DIR", "reports")) / "custom_probes.json"
+
+# ── Optional API token auth ───────────────────────────────────────────────────
+# Set GUARDRAILPROBE_API_TOKEN to protect write endpoints from unauthenticated
+# benchmark triggers.  When unset the dashboard is open (local/dev default).
+# Clients must send:  Authorization: Bearer <token>
+#                 or  X-API-Token: <token>
+_API_TOKEN: str = os.getenv("GUARDRAILPROBE_API_TOKEN", "").strip()
+
+
+def _require_token(f):  # type: ignore[no-untyped-def]
+    """Decorator: enforce API token on write endpoints when token is configured."""
+    @functools.wraps(f)
+    def _inner(*args, **kwargs):  # type: ignore[no-untyped-def]
+        if not _API_TOKEN:
+            return f(*args, **kwargs)
+        auth = request.headers.get("Authorization", "")
+        if auth == f"Bearer {_API_TOKEN}":
+            return f(*args, **kwargs)
+        if request.headers.get("X-API-Token", "") == _API_TOKEN:
+            return f(*args, **kwargs)
+        return jsonify({"error": "Unauthorized — set Authorization: Bearer <GUARDRAILPROBE_API_TOKEN>"}), 401
+    return _inner
 
 
 def _load_custom_probes() -> list:
@@ -346,6 +369,22 @@ _INDEX_HTML = """<!DOCTYPE html>
     <div class="card">
       <div class="card-title">My Custom Probes</div>
       <div id="custom-probes-list" class="note-text">Loading…</div>
+
+      <!-- Run all custom probes across backends ─────────────────────────── -->
+      <div id="run-custom-section" style="display:none;margin-top:20px;border-top:1px solid var(--border);padding-top:16px">
+        <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:10px">
+          Run Custom Probes Across Backends
+        </div>
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:12px">
+          <button class="btn" id="run-custom-btn">&#9654; Run on All Backends</button>
+          <label style="display:flex;align-items:center;gap:7px;font-size:0.82rem;cursor:pointer;color:var(--text)">
+            <input type="checkbox" id="include-builtin-cb" style="width:auto;margin:0;cursor:pointer">
+            Also include all 78 builtin probes
+          </label>
+        </div>
+        <div id="run-custom-msg"    style="font-size:0.82rem;display:none;margin-bottom:8px"></div>
+        <div id="run-custom-result" style="display:none"></div>
+      </div>
     </div>
 
   </div>
@@ -1043,20 +1082,24 @@ _INDEX_HTML = """<!DOCTYPE html>
   }
 
   // ── Custom probes list ────────────────────────────────────────────────────────
+  // Store probe objects by index so onclick handlers never embed raw JSON in HTML.
+  let _customProbes = [];
+
   async function loadCustomProbes() {
     const wrap = $('custom-probes-list');
     try {
       const res  = await fetch('/api/probes/custom');
-      const data = await res.json();
-      if (!data.length) {
+      _customProbes = await res.json();
+      if (!_customProbes.length) {
         wrap.innerHTML = 'No custom probes yet — use the <strong>Create New Probe</strong> form above.';
+        $('run-custom-section').style.display = 'none';
         return;
       }
-      wrap.innerHTML = data.map((p, i) => {
+      $('run-custom-section').style.display = 'block';
+      wrap.innerHTML = _customProbes.map((p, i) => {
         const readyOpts = _allBackends.filter(b => b.ready)
           .map(b => `<option value="${b.backend}">${b.backend}</option>`).join('');
-        const preview   = p.payload.length > 120
-                          ? p.payload.slice(0,120) + '…' : p.payload;
+        const preview = p.payload.length > 120 ? p.payload.slice(0,120) + '…' : p.payload;
         return `
         <div class="probe-row">
           <div class="probe-hd">
@@ -1070,9 +1113,9 @@ _INDEX_HTML = """<!DOCTYPE html>
             <select id="psel-${i}" style="width:auto;padding:5px 8px;font-size:0.78rem">
               ${readyOpts || '<option disabled>no backends ready</option>'}
             </select>
-            <button class="btn btn-sm" onclick="runInlineProbe(${i}, ${JSON.stringify(p.payload)})">▶ Run</button>
-            <button class="btn btn-ghost btn-sm" onclick="editProbe(${JSON.stringify(p)})">Edit</button>
-            <button class="btn btn-danger btn-sm" onclick="deleteProbe(${JSON.stringify(p.id)})">Delete</button>
+            <button class="btn btn-sm"        onclick="runInlineProbe(${i})">&#9654; Run</button>
+            <button class="btn btn-ghost btn-sm" onclick="editProbeByIdx(${i})">Edit</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteProbeByIdx(${i})">Delete</button>
           </div>
           <div class="probe-inline-result" id="pres-${i}"></div>
         </div>`;
@@ -1082,16 +1125,18 @@ _INDEX_HTML = """<!DOCTYPE html>
     }
   }
 
-  async function runInlineProbe(i, payload) {
+  async function runInlineProbe(i) {
+    const p       = _customProbes[i];
     const backend = $('psel-' + i) ? $('psel-' + i).value : '';
     const box     = $('pres-' + i);
+    if (!p)       { return; }
     if (!backend) { alert('No ready backend available.'); return; }
     box.style.display = 'block';
     box.innerHTML = '<span class="spinner"></span> Running…';
     try {
       const res  = await fetch('/api/probe/run', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({backend, payload}),
+        body: JSON.stringify({backend, payload: p.payload}),
       });
       const data = await res.json();
       if (data.error) {
@@ -1111,6 +1156,9 @@ _INDEX_HTML = """<!DOCTYPE html>
       box.innerHTML = `<span style="color:var(--red)">Error: ${e.message}</span>`;
     }
   }
+
+  function editProbeByIdx(i) { editProbe(_customProbes[i]); }
+  function deleteProbeByIdx(i) { deleteProbe(_customProbes[i].id); }
 
   function editProbe(p) {
     $('np-id').value          = p.id + '-copy';
@@ -1134,6 +1182,84 @@ _INDEX_HTML = """<!DOCTYPE html>
     }
   }
 
+  // ── Run custom probes across all backends ────────────────────────────────────
+  async function runAllCustomProbes() {
+    const btn    = $('run-custom-btn');
+    const msg    = $('run-custom-msg');
+    const resDiv = $('run-custom-result');
+    const includeBuiltin = $('include-builtin-cb').checked;
+
+    btn.disabled    = true;
+    btn.textContent = '⏳ Running…';
+    msg.style.display = 'block';
+    msg.innerHTML = '<span class="spinner"></span> Firing probes against all configured backends — may take 15–60 s…';
+    resDiv.style.display = 'none';
+    resDiv.innerHTML     = '';
+
+    try {
+      const r = await fetch('/api/probes/custom/run', {
+        method:  'POST',
+        headers: {'Content-Type': 'application/json'},
+        body:    JSON.stringify({include_builtin: includeBuiltin}),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        msg.innerHTML = `<span style="color:var(--red)">${data.error || 'Run failed.'}</span>`;
+      } else {
+        const probeCount = Object.values(data.reports || {})
+          .reduce((s, rr) => Math.max(s, rr.total_probes || 0), 0);
+        const nBackends  = (data.backends_tested || []).length;
+        msg.innerHTML = `<span style="color:var(--green)">&#10003; Complete</span>
+          &middot; <strong>${probeCount}</strong> probe${probeCount !== 1 ? 's' : ''}
+          &middot; <strong>${nBackends}</strong> backend${nBackends !== 1 ? 's' : ''}
+          &middot; best: <strong>${data.best_overall || '—'}</strong>`;
+        resDiv.style.display = 'block';
+        resDiv.innerHTML = renderCustomRunTable(data);
+      }
+    } catch(e) {
+      msg.innerHTML = `<span style="color:var(--red)">Error: ${e.message}</span>`;
+    } finally {
+      btn.disabled    = false;
+      btn.textContent = '▶ Run on All Backends';
+    }
+  }
+
+  function renderCustomRunTable(data) {
+    const reports = data.reports || {};
+    if (!Object.keys(reports).length) return '<em style="color:var(--muted)">No results.</em>';
+    const skipped = data.skipped_backends || {};
+    const rows = Object.entries(reports).map(([b, rr]) => {
+      if (skipped[b]) {
+        return `<tr>
+          <td style="font-weight:600;padding:6px 8px 6px 0">${b}</td>
+          <td colspan="4" style="color:var(--muted);font-size:0.78rem;padding:6px 8px">
+            SKIPPED — ${skipped[b]}
+          </td></tr>`;
+      }
+      const pct  = ((rr.pass_rate || 0) * 100).toFixed(1);
+      const lat  = (rr.average_latency_ms || 0).toFixed(0);
+      const col  = rr.pass_rate >= 0.8 ? 'var(--green)' : rr.pass_rate >= 0.5 ? '#f59e0b' : 'var(--red)';
+      const star = b === data.best_overall ? ' <span style="color:#f59e0b">&#9733;</span>' : '';
+      return `<tr style="border-bottom:1px solid var(--border)">
+        <td style="font-weight:600;padding:6px 8px 6px 0">${b}${star}</td>
+        <td style="text-align:right;padding:6px 8px">${rr.total_probes || 0}</td>
+        <td style="text-align:right;padding:6px 8px">${rr.passed || 0}</td>
+        <td style="text-align:right;padding:6px 8px;color:${col};font-weight:700">${pct}%</td>
+        <td style="text-align:right;padding:6px 8px;color:var(--muted)">${lat} ms</td>
+      </tr>`;
+    }).join('');
+    return `<table style="width:100%;border-collapse:collapse;font-size:0.8rem;margin-top:4px">
+      <thead><tr style="border-bottom:2px solid var(--border)">
+        <th style="text-align:left;padding:5px 8px 5px 0;color:var(--muted);font-weight:600">Backend</th>
+        <th style="text-align:right;padding:5px 8px;color:var(--muted);font-weight:600">Probes</th>
+        <th style="text-align:right;padding:5px 8px;color:var(--muted);font-weight:600">Passed</th>
+        <th style="text-align:right;padding:5px 8px;color:var(--muted);font-weight:600">Pass Rate</th>
+        <th style="text-align:right;padding:5px 8px;color:var(--muted);font-weight:600">Avg Latency</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  }
+
   // ── Init ──────────────────────────────────────────────────────────────────────
   const now = new Date();
   $('bench-year').value  = now.getFullYear();
@@ -1144,6 +1270,7 @@ _INDEX_HTML = """<!DOCTYPE html>
   $('refresh-btn').addEventListener('click', loadLatest);
   $('save-probe-btn').addEventListener('click', saveProbe);
   $('load-example-btn').addEventListener('click', loadExample);
+  $('run-custom-btn').addEventListener('click', runAllCustomProbes);
 
   loadAdapters().then(() => loadCustomProbes());
   loadLatest();
@@ -1219,6 +1346,7 @@ def create_app() -> Flask:
         ])
 
     @app.post("/api/probe/run")
+    @_require_token
     def api_probe_run():
         body         = request.get_json(force=True)
         backend_name = body.get("backend", "")
@@ -1247,6 +1375,7 @@ def create_app() -> Flask:
             return jsonify({"error": str(exc)}), 500
 
     @app.post("/api/benchmark/run")
+    @_require_token
     def api_benchmark_run():
         body     = request.get_json(force=True)
         year     = body.get("year")  or datetime.now(timezone.utc).year
@@ -1386,6 +1515,7 @@ def create_app() -> Flask:
         return jsonify(_load_custom_probes())
 
     @app.post("/api/probes/custom")
+    @_require_token
     def api_probes_custom_save():
         body     = request.get_json(force=True)
         required = ["id", "category", "payload", "expected_action",
@@ -1420,16 +1550,73 @@ def create_app() -> Flask:
         }
         probes.append(probe)
         _save_custom_probes(probes)
+        try:
+            _rt_probe_library.add_custom_probe(_cp_to_attack_probe(probe))
+        except Exception:
+            pass  # _rt_probe_library may already have it if seeded at startup
         return jsonify(probe), 201
 
     @app.delete("/api/probes/custom/<probe_id>")
+    @_require_token
     def api_probes_custom_delete(probe_id: str):
         probes     = _load_custom_probes()
         new_probes = [p for p in probes if p["id"] != probe_id]
         if len(new_probes) == len(probes):
             return jsonify({"error": f"Probe {probe_id!r} not found"}), 404
         _save_custom_probes(new_probes)
+        _rt_probe_library.remove_custom_probe(probe_id)
         return jsonify({"deleted": probe_id})
+
+    @app.post("/api/probes/custom/run")
+    @_require_token
+    def api_probes_custom_run():
+        """Run custom probes across one or all backends.
+
+        Body fields (all optional):
+          backends        list|str  Which backends to run against. Default: all configured.
+          probe_ids       list      Restrict to specific probe IDs (custom or builtin).
+          include_builtin bool      When true, merge custom probes with the full builtin set.
+                                    Default: false (custom probes only).
+        """
+        import os as _os
+        body = request.get_json(force=True) or {}
+
+        raw_backends = body.get("backends") or [
+            b.value for b in _GB
+            if not (b is _GB.GA_GUARD and not _os.getenv("GA_GUARD_API_URL", "").strip())
+        ]
+        try:
+            backends = [_GB(b) for b in (raw_backends if isinstance(raw_backends, list)
+                                          else raw_backends.split(","))]
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+        builtin_ids = {q.id for q in _PL.BUILTIN_PROBES}
+        custom_probes = [p for p in _rt_probe_library.all_probes() if p.id not in builtin_ids]
+
+        if not custom_probes:
+            return jsonify({
+                "error": "No custom probes found. Create probes first via POST /api/probes/custom"
+            }), 404
+
+        include_builtin = bool(body.get("include_builtin", False))
+        if include_builtin:
+            probe_set = _rt_probe_library.all_probes()          # builtin + custom
+        else:
+            probe_set = custom_probes                            # custom only
+
+        probe_ids = body.get("probe_ids")
+        if probe_ids:
+            allowed = set(probe_ids)
+            probe_set = [p for p in probe_set if p.id in allowed]
+            if not probe_set:
+                return jsonify({"error": f"None of the requested probe_ids exist in the selected set"}), 404
+
+        try:
+            comparison = _rt_runner.compare_backends(backends, probes=probe_set)
+            return jsonify(_comparison_to_dict(comparison))
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
 
     # ── /redteam/* routes — mirrors monorepo server.py schema exactly ─────────
 
@@ -1439,6 +1626,26 @@ def create_app() -> Flask:
 
     _rt_probe_library: _PL = _PL()
     _rt_runner: _RTR = _RTR()
+
+    from guardrailprobe._types import ActionType as _AT
+
+    def _cp_to_attack_probe(cp: dict) -> "_AP":
+        return _AP(
+            id=cp["id"],
+            category=_AC(cp["category"]),
+            payload=cp["payload"],
+            expected_action=_AT(cp["expected_action"]),
+            severity=cp.get("severity", "medium"),
+            owasp_ref=cp.get("owasp_ref", cp.get("category", "")),
+            description=cp.get("description", ""),
+            tags=cp.get("tags") or [],
+        )
+
+    for _cp in _load_custom_probes():
+        try:
+            _rt_probe_library.add_custom_probe(_cp_to_attack_probe(_cp))
+        except Exception:
+            pass  # skip malformed or duplicate entries from the JSON file
 
     def _probe_to_dict(p):
         return {
@@ -1514,6 +1721,7 @@ def create_app() -> Flask:
         }
 
     @app.post("/redteam/run")
+    @_require_token
     def redteam_run():
         body = request.get_json(force=True) or {}
         try:
@@ -1539,6 +1747,7 @@ def create_app() -> Flask:
             return jsonify({"error": str(e)}), 500
 
     @app.post("/redteam/compare")
+    @_require_token
     def redteam_compare():
         import os as _os
         body = request.get_json(force=True) or {}
@@ -1582,6 +1791,7 @@ def create_app() -> Flask:
         return jsonify([_probe_to_dict(p) for p in probes])
 
     @app.post("/redteam/probes/custom")
+    @_require_token
     def redteam_add_custom_probe():
         from guardrailprobe._types import ActionType as _AT
         body = request.get_json(force=True) or {}

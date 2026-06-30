@@ -13,7 +13,7 @@ from guardrailprobe._types import ActionType, AdapterStatus, ProbeResponse
 
 logger = logging.getLogger(__name__)
 
-_API_VERSION = "2023-10-01"
+_API_VERSION = "2024-09-01"
 _MAX_TEXT_CHARS = 10_000
 
 

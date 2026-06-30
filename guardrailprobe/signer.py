@@ -27,6 +27,7 @@ GUARDRAIL_TSA_URL          RFC 3161 timestamp authority
 from __future__ import annotations
 
 import hashlib
+import importlib.metadata
 import importlib.util
 import logging
 import os
@@ -41,7 +42,10 @@ logger = logging.getLogger("ReportSigner")
 _PYHANKO_AVAILABLE  = importlib.util.find_spec("pyhanko")   is not None
 _REPORTLAB_AVAILABLE = importlib.util.find_spec("reportlab") is not None
 
-_VERSION = "0.1.0"
+try:
+    _VERSION = importlib.metadata.version("guardrailprobe")
+except importlib.metadata.PackageNotFoundError:
+    _VERSION = "unknown"
 
 
 # ── Self-signed certificate generation ───────────────────────────────────────

@@ -19,6 +19,7 @@ CLI equivalent::
 from __future__ import annotations
 
 import calendar
+import importlib.metadata
 import json
 import logging
 from collections import defaultdict
@@ -33,7 +34,10 @@ from guardrailprobe.runner import ComparisonReport, RedTeamRunner
 
 logger = logging.getLogger(__name__)
 
-PROBE_LIBRARY_VERSION = "0.1.0"
+try:
+    PROBE_LIBRARY_VERSION = importlib.metadata.version("guardrailprobe")
+except importlib.metadata.PackageNotFoundError:
+    PROBE_LIBRARY_VERSION = "unknown"
 _BACKEND_CHECK_TIMEOUT = 5
 
 REASON_UNAVAILABLE         = "UNAVAILABLE"
